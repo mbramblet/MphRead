@@ -42,7 +42,7 @@ namespace MphRead.Entities
                 _cooldownTime--;
             }
             _cooldownTime *= 2; // todo: FPS stuff
-            if (_scene.GameMode == GameMode.SinglePlayer)
+            if (GameState.Mode == GameMode.SinglePlayer)
             {
                 int state = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0);
                 if (data.AlwaysActive != 0)
@@ -83,7 +83,7 @@ namespace MphRead.Entities
             if (info.Message == Message.Activate)
             {
                 Active = true;
-                if (_scene.GameMode == GameMode.SinglePlayer)
+                if (GameState.Mode == GameMode.SinglePlayer)
                 {
                     GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                 }
@@ -93,7 +93,7 @@ namespace MphRead.Entities
                 if ((int)info.Param1 != 0)
                 {
                     Active = true;
-                    if (_scene.GameMode == GameMode.SinglePlayer)
+                    if (GameState.Mode == GameMode.SinglePlayer)
                     {
                         GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                     }
@@ -101,7 +101,7 @@ namespace MphRead.Entities
                 else
                 {
                     Active = false;
-                    if (_scene.GameMode == GameMode.SinglePlayer)
+                    if (GameState.Mode == GameMode.SinglePlayer)
                     {
                         GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                     }
@@ -154,14 +154,8 @@ namespace MphRead.Entities
             _triggeredSlots[player.SlotIndex] = true;
             if (_data.AllowMultiple == 0)
             {
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (AreaVolumeEntity other in _scene.GetAreaVolumeEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type != EntityType.AreaVolume)
-                    {
-                        continue;
-                    }
-                    var other = (AreaVolumeEntity)entity;
                     if (other != this && other._parent == _parent
                         && other._triggeredSlots[player.SlotIndex]
                         && other.Data.InsideMessage == _data.InsideMessage
@@ -195,25 +189,13 @@ namespace MphRead.Entities
             _cooldownSlots[player.SlotIndex] = _cooldownTime;
             if (_data.InsideMessage == Message.Gravity)
             {
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (AreaVolumeEntity other in _scene.GetAreaVolumeEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type != EntityType.AreaVolume)
-                    {
-                        continue;
-                    }
-                    var other = (AreaVolumeEntity)entity;
                     other._prioritySlots[player.SlotIndex] = other.Data.Priority;
                 }
             }
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (AreaVolumeEntity other in _scene.GetAreaVolumeEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.AreaVolume)
-                {
-                    continue;
-                }
-                var other = (AreaVolumeEntity)entity;
                 if (other != this && other._child == _child
                     && other._triggeredSlots[player.SlotIndex]
                     && other.Data.ExitMessage == _data.ExitMessage
@@ -237,14 +219,8 @@ namespace MphRead.Entities
         private bool PrioritizeGravity(Vector3 position, int slot)
         {
             bool result = true;
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (AreaVolumeEntity other in _scene.GetAreaVolumeEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.AreaVolume)
-                {
-                    continue;
-                }
-                var other = (AreaVolumeEntity)entity;
                 if (other.Data.InsideMessage == _data.InsideMessage && other._volume.TestPoint(position))
                 {
                     if (other.Data.Priority > _prioritySlots[slot])
@@ -267,21 +243,15 @@ namespace MphRead.Entities
                 return base.Process();
             }
             TriggerFlags flags = _data.TriggerFlags;
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.Player)
+                if (GameState.Mode == GameMode.SinglePlayer && player != PlayerEntity.Main)
                 {
                     continue;
                 }
-                var player = (PlayerEntity)entity;
-                if (_scene.GameMode == GameMode.SinglePlayer && player != PlayerEntity.Main)
+                for (int i = 0; i < player.EquipInfo.Beams.Length; i++)
                 {
-                    continue;
-                }
-                for (int j = 0; j < player.EquipInfo.Beams.Length; j++)
-                {
-                    BeamProjectileEntity beam = player.EquipInfo.Beams[j];
+                    BeamProjectileEntity beam = player.EquipInfo.Beams[i];
                     if (beam.Lifespan > 0)
                     {
                         CollisionResult discard = default;
@@ -341,7 +311,7 @@ namespace MphRead.Entities
         protected override Vector4? OverrideColor { get; } = new ColorRgb(0xFF, 0xFF, 0x00).AsVector4();
         public FhAreaVolumeEntityData Data => _data;
 
-        public FhAreaVolumeEntity(FhAreaVolumeEntityData data, Scene scene) : base(EntityType.AreaVolume, scene)
+        public FhAreaVolumeEntity(FhAreaVolumeEntityData data, Scene scene) : base(EntityType.FhAreaVolume, scene)
         {
             _data = data;
             Id = data.Header.EntityId;

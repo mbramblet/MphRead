@@ -798,14 +798,8 @@ namespace MphRead.Entities.Enemies
             float minDist = Single.MaxValue;
             float maxDist = 0;
             int value = (int)(GoreaFlags & (Gorea2Flags.Bit14 | Gorea2Flags.Bit15)) >> 14;
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (TriggerVolumeEntity trigger in _scene.GetTriggerVolumeEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.TriggerVolume)
-                {
-                    continue;
-                }
-                var trigger = (TriggerVolumeEntity)entity;
                 if (trigger.Data.ParentMessage != Message.Gorea2Trigger
                     && trigger.Data.ChildMessage != Message.Gorea2Trigger)
                 {
@@ -976,19 +970,14 @@ namespace MphRead.Entities.Enemies
             else
             {
                 TriggerVolumeEntity? found = null;
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (TriggerVolumeEntity trigger in _scene.GetTriggerVolumeEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type == EntityType.TriggerVolume)
+                    if ((trigger.Data.ParentMessage == Message.Gorea2Trigger
+                        || trigger.Data.ChildMessage == Message.Gorea2Trigger)
+                        && trigger.Volume.TestPoint(Position))
                     {
-                        var trigger = (TriggerVolumeEntity)entity;
-                        if ((trigger.Data.ParentMessage == Message.Gorea2Trigger
-                            || trigger.Data.ChildMessage == Message.Gorea2Trigger)
-                            && trigger.Volume.TestPoint(Position))
-                        {
-                            found = trigger;
-                            break;
-                        }
+                        found = trigger;
+                        break;
                     }
                 }
                 if (found != null)

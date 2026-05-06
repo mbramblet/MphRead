@@ -22,7 +22,7 @@ namespace MphRead
             {
                 throw new ProgramException("No room with this name is known.");
             }
-            GameMode mode = scene.GameMode;
+            GameMode mode = GameState.Mode;
             if (mode == GameMode.None)
             {
                 mode = metadata.Multiplayer ? GameMode.Battle : GameMode.SinglePlayer;
@@ -34,9 +34,9 @@ namespace MphRead
             }
             else
             {
-                Weapons.Current = scene.Multiplayer ? Weapons.WeaponsMP : Weapons.Weapons1P;
+                Weapons.Current = GameState.Multiplayer ? Weapons.WeaponsMP : Weapons.Weapons1P;
             }
-            scene.GameMode = mode;
+            GameState.Mode = mode;
             if (mode == GameMode.SinglePlayer)
             {
                 Menu.ApplyAdventureSettings();
@@ -55,7 +55,7 @@ namespace MphRead
             CamSeqEntity.Current = null;
             CameraSequence.Current = null;
             CameraSequence.Intro = null;
-            if (scene.Multiplayer && PlayerEntity.PlayerCount > 0)
+            if (GameState.Multiplayer && PlayerEntity.PlayerCount > 0)
             {
                 int seqId = roomId - 93 + 172;
                 if (seqId >= 172 && seqId < 199)
@@ -67,21 +67,81 @@ namespace MphRead
             var room = new RoomEntity(scene);
             (CollisionInstance collision, IReadOnlyList<EntityBase> entities) = SetUpRoom(mode, playerCount,
                 bossFlags, nodeLayerMask, entityLayerId, metadata, room, scene, isRoomTransition: false);
-            UpdateAreaHunters();
-            InitHunterSpawns(scene, entities, initialize: false); // see: "probably revisit this"
+            if (GameState.SinglePlayer)
+            {
+                UpdateAreaHunters();
+                InitHunterSpawns(scene, entities, initialize: false); // see: "probably revisit this"
+            }
+            AiPersonality.LoadAll(mode);
+            room.SetNodeData(LoadNodeData(metadata.NodePath, room.RoomId, mode, entities));
             GameState.StorySave.CheckpointRoomId = room.RoomId;
             return (room, metadata, collision, entities);
         }
 
-        // this is only for the no repeat encounters feature
-        private static readonly bool[] _completedRandomEncounterRooms = new bool[66];
-
-        public static void CompleteEncounter(int roomId)
+        public static NodeData? LoadNodeData(string? nodePath, int roomId, GameMode mode, IReadOnlyList<EntityBase> entities)
         {
-            if (roomId >= 27 && roomId <= 92)
+            NodeData? nodeData = null;
+            if (mode == GameMode.SinglePlayer)
             {
-                _completedRandomEncounterRooms[roomId - 27] = true;
+                for (int i = 0; i < PlayerEntity.Players.Count; i++)
+                {
+                    PlayerEntity player = PlayerEntity.Players[i];
+                    int encounterState = GameState.EncounterState[i];
+                    if (player.IsBot && encounterState >= 1 && encounterState <= 4)
+                    {
+                        if (Metadata.EncounterNodeDataOverrides.TryGetValue(roomId, out string? nodeOverride))
+                        {
+                            nodePath = nodeOverride;
+                        }
+                        break;
+                    }
+                }
             }
+            else if (mode == GameMode.Capture)
+            {
+                if (Metadata.CtfNodeDataOverrides.TryGetValue(roomId, out string? nodeOverride))
+                {
+                    nodePath = nodeOverride;
+                }
+            }
+            else if ((mode == GameMode.Nodes || mode == GameMode.NodesTeams // MP14 OUTER REACH (Outer Reach)
+                || mode == GameMode.Defender || mode == GameMode.DefenderTeams) && roomId == 107)
+            {
+                nodePath = @"levels\nodeData\mp14_KOTH_node.bin";
+            }
+            if (nodePath != null)
+            {
+                nodeData = ReadNodeData.ReadData(Paths.Combine(@"", nodePath));
+                if (nodeData.Simple)
+                {
+                    for (int i = 0; i < entities.Count; i++)
+                    {
+                        EntityBase entity = entities[i];
+                        if (entity.Type == EntityType.JumpPad)
+                        {
+                            var jumpPad = (JumpPadEntity)entity;
+                            jumpPad.ClosestNode = ReadNodeData.FindClosestNode(nodeData, jumpPad.Position, useMaxDist: true);
+                        }
+                        else if (entity.Type == EntityType.OctolithFlag)
+                        {
+                            var octoFlag = (OctolithFlagEntity)entity;
+                            octoFlag.ClosestNode = ReadNodeData.FindClosestNode(nodeData, octoFlag.Position);
+                            octoFlag.BaseClosestNode = ReadNodeData.FindClosestNode(nodeData, octoFlag.BasePosition);
+                        }
+                        else if (entity.Type == EntityType.FlagBase)
+                        {
+                            var flagBase = (FlagBaseEntity)entity;
+                            flagBase.ClosestNode = ReadNodeData.FindClosestNode(nodeData, flagBase.Position);
+                        }
+                        else if (entity.Type == EntityType.NodeDefense)
+                        {
+                            var nodeDefense = (NodeDefenseEntity)entity;
+                            nodeDefense.ClosestNode = ReadNodeData.FindClosestNode(nodeData, nodeDefense.Position);
+                        }
+                    }
+                }
+            }
+            return nodeData;
         }
 
         public static void UpdateAreaHunters(StorySave? save = null)
@@ -90,7 +150,7 @@ namespace MphRead
             if (save == null)
             {
                 save = GameState.StorySave;
-                Array.Fill(_completedRandomEncounterRooms, false);
+                Array.Fill(GameState.CompletedRandomEncounterRooms, false);
             }
             // todo?: the game does this in the cockpit
             Array.Fill(save.AreaHunters, (byte)0);
@@ -150,9 +210,12 @@ namespace MphRead
                 player.LoadFlags &= ~LoadFlags.Active;
                 player.LoadFlags &= ~LoadFlags.SlotActive;
                 player.IsBot = false;
+                player.BotLevel = 0;
+                player.ResetAdventureModeBotWeapon();
             }
             PlayerEntity.PlayerCount = 1;
             PlayerEntity.PlayersCreated = 1;
+            Array.Fill(GameState.EncounterState, 0);
             if (scene.AreaId >= 8) // handled differently in-game
             {
                 return;
@@ -181,7 +244,7 @@ namespace MphRead
                         continue;
                     }
                     if (spawner.Data.Fields.S09.HunterId == 8 && (Cheats.NoRandomEncounters || Features.NoRepeatEncounters
-                        && scene.RoomId >= 27 && scene.RoomId <= 92 && _completedRandomEncounterRooms[scene.RoomId - 27]))
+                        && scene.RoomId >= 27 && scene.RoomId <= 92 && GameState.CompletedRandomEncounterRooms[scene.RoomId - 27]))
                     {
                         return;
                     }
@@ -248,7 +311,8 @@ namespace MphRead
                         player.Initialized = false;
                         scene.AddEntity(player);
                     }
-                    // todo: encounter state and bot level
+                    GameState.EncounterState[PlayerEntity.PlayerCount] = (int)spawner.Data.Fields.S09.EncounterType;
+                    player.BotLevel = 1;
                     PlayerEntity.PlayerCount++;
                 }
             }
@@ -301,16 +365,11 @@ namespace MphRead
                 nodeLayerMask = GetNodeLayer(mode, metadata.NodeLayer, nodePlayerCount);
             }
             CollisionInstance collision = Collision.GetCollision(metadata, nodeLayerMask);
-            NodeData? nodeData = null;
-            if (metadata.NodePath != null)
-            {
-                nodeData = ReadNodeData.ReadData(Paths.Combine(@"", metadata.NodePath));
-            }
             if (isRoomTransition)
             {
                 collision.Active = false;
             }
-            room.Setup(metadata.Name, metadata, collision, nodeData, nodeLayerMask, metadata.Id);
+            room.Setup(metadata.Name, metadata, collision, nodeLayerMask, metadata.Id);
             IReadOnlyList<EntityBase> entities = LoadEntities(metadata, entityLayerId, scene);
             entities = GetExtraEntities(room.RoomId, entities, scene);
             return (collision, entities);
@@ -353,7 +412,7 @@ namespace MphRead
                 return results;
             }
             // only FirstHunt is passed here, not Hybrid -- model/anim/col should be loaded from FH, and ent/node from MPH
-            IReadOnlyList<Entity> entities = Read.GetEntities(metadata.EntityPath, layerId, metadata.FirstHunt);
+            IReadOnlyList<Entity> entities = Read.GetEntities(metadata.EntityPath, layerId, metadata.FirstHunt, allowHook: true);
             foreach (Entity entity in entities)
             {
                 string nodeName = entity.NodeName;
@@ -482,7 +541,7 @@ namespace MphRead
             {
                 if (Paths.IsMphJapan || Paths.IsMphKorea)
                 {
-                    (int count, byte[] charData) = Read.ReadKanjiFont(scene.GameMode == GameMode.SinglePlayer);
+                    (int count, byte[] charData) = Read.ReadKanjiFont(GameState.SinglePlayer);
                     byte[] widths = new byte[count];
                     if (Paths.IsMphJapan)
                     {
@@ -538,7 +597,7 @@ namespace MphRead
             Strings.ReadStringTable(StringTables.HudMsgsCommon);
             Strings.ReadStringTable(StringTables.HudMessagesSP);
             Strings.ReadStringTable(StringTables.HudMessagesMP);
-            if (!scene.Multiplayer)
+            if (GameState.SinglePlayer)
             {
                 Strings.ReadStringTable(StringTables.ScanLog);
             }
@@ -683,7 +742,7 @@ namespace MphRead
             scene.LoadEffect(239); // enemyCol1
             scene.LoadModel(Read.GetSingleParticle(SingleType.Death).Model);
             scene.LoadModel(Read.GetSingleParticle(SingleType.Fuzzball).Model);
-            if (!scene.Multiplayer)
+            if (GameState.SinglePlayer)
             {
                 scene.LoadModel(Read.GetModelInstance("icons", dir: MetaDir.Hud).Model);
             }
@@ -714,12 +773,9 @@ namespace MphRead
 
         public static void LoadObjectResources(Scene scene)
         {
-            foreach (EntityBase entity in scene.Entities)
+            foreach (ObjectEntity obj in scene.GetObjectEntities())
             {
-                if (entity is ObjectEntity obj)
-                {
-                    LoadObjectResources(obj, scene);
-                }
+                LoadObjectResources(obj, scene);
             }
         }
 
@@ -733,12 +789,9 @@ namespace MphRead
 
         public static void LoadPlatformResources(Scene scene)
         {
-            foreach (EntityBase entity in scene.Entities)
+            foreach (PlatformEntity platform in scene.GetPlatformEntities())
             {
-                if (entity is PlatformEntity platform)
-                {
-                    LoadPlatformResources(platform, scene);
-                }
+                LoadPlatformResources(platform, scene);
             }
         }
 
@@ -775,12 +828,9 @@ namespace MphRead
         public static void LoadEnemyResources(Scene scene)
         {
             // todo?: pre-allocation(?)
-            foreach (EntityBase entity in scene.Entities)
+            foreach (EnemySpawnEntity spawner in scene.GetEnemySpawnEntities())
             {
-                if (entity is EnemySpawnEntity spawner)
-                {
-                    LoadEnemyResources(spawner, scene);
-                }
+                LoadEnemyResources(spawner, scene);
             }
         }
 
@@ -992,19 +1042,16 @@ namespace MphRead
         public static void LoadItemResources(Scene scene)
         {
             // todo: pre-allocate
-            if (scene.Multiplayer)
+            if (GameState.Multiplayer)
             {
                 LoadItem(ItemType.UASmall, scene);
                 LoadItem(ItemType.UABig, scene);
                 LoadItem(ItemType.MissileSmall, scene);
                 LoadItem(ItemType.MissileBig, scene);
             }
-            foreach (EntityBase entity in scene.Entities)
+            foreach (ItemSpawnEntity itemSpawner in scene.GetItemSpawnEntities())
             {
-                if (entity is ItemSpawnEntity itemSpawner)
-                {
-                    LoadItemResources(itemSpawner, scene);
-                }
+                LoadItemResources(itemSpawner, scene);
             }
         }
 
@@ -1061,7 +1108,7 @@ namespace MphRead
         {
             // todo: load entities into unused rooms to make them playable
             Hunter hunter = PlayerEntity.Main.Hunter;
-            if (scene.GameMode != GameMode.SinglePlayer || hunter == Hunter.Samus || !Features.AlternateHunters1P)
+            if (!GameState.SinglePlayer || hunter == Hunter.Samus || !Features.AlternateHunters1P)
             {
                 return entities;
             }

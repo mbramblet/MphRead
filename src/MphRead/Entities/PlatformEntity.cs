@@ -184,7 +184,7 @@ namespace MphRead.Entities
                 destoryed: new SfxData(Metadata.PlatformSfx[_data.ModelId, 3])
             );
             _animFlags |= PlatAnimFlags.Draw;
-            Debug.Assert(scene.GameMode == GameMode.SinglePlayer);
+            Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
             if (Flags.TestFlag(PlatformFlags.UseRoomState) && !Flags.TestFlag(PlatformFlags.PersistRoomState))
             {
                 int state = GameState.StorySave.GetRoomState(scene.RoomId, Id);
@@ -198,7 +198,7 @@ namespace MphRead.Entities
                     _animFlags &= ~PlatAnimFlags.Draw;
                 }
             }
-            if (Flags.TestFlag(PlatformFlags.SamusShip))
+            if (Flags.TestFlag(PlatformFlags.SamusShip) && !Cheats.SkipPlanetIntros)
             {
                 SleepWake(wake: true, instant: true);
                 _currentAnimState = -2;
@@ -819,7 +819,11 @@ namespace MphRead.Entities
             if (!soundUpdated)
             {
                 _soundSource.Update(_visiblePosition, _sfxRangeIndex);
-                if (_data.ModelId != 5) // Platform_Unit4_C1
+                if (_data.ModelId == 5) // Platform_Unit4_C1 (Drip Moat)
+                {
+                    _soundSource.Volume = 1;
+                }
+                else
                 {
                     UpdateNodeRefVolume();
                 }
@@ -1611,7 +1615,7 @@ namespace MphRead.Entities
         private int _moveTimer;
         private Vector3 _velocity = Vector3.Zero;
 
-        public FhPlatformEntity(FhPlatformEntityData data, Scene scene) : base(EntityType.Platform, scene)
+        public FhPlatformEntity(FhPlatformEntityData data, Scene scene) : base(EntityType.FhPlatform, scene)
         {
             _data = data;
             Id = data.Header.EntityId;

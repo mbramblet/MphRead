@@ -7,6 +7,13 @@ namespace MphRead.Entities
 {
     public partial class PlayerEntity
     {
+        private readonly float[] _pastAimX = new float[8];
+        private readonly float[] _pastAimY = new float[8];
+        private float _buttonAimX = 0;
+        private float _buttonAimY = 0;
+        private const float _maxButtonAimX = 8;
+        private const float _maxButtonAimY = 8;
+
         private void ProcessInput()
         {
             if (_health > 0)
@@ -25,8 +32,8 @@ namespace MphRead.Entities
                 if (!IsBot)
                 {
                     ProcessTouchInput();
-                    // todo: actual pause menu should required pressed
-                    if (_scene.Multiplayer && !Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen) && Controls.Pause.IsDown)
+                    // todo: actual pause menu should require pressed
+                    if (GameState.Multiplayer && !Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen) && Controls.Pause.IsDown)
                     {
                         _showScoreboard = true;
                     }
@@ -72,7 +79,7 @@ namespace MphRead.Entities
             }
             else
             {
-                _showScoreboard = _scene.Multiplayer && Controls.Pause.IsDown;
+                _showScoreboard = GameState.Multiplayer && Controls.Pause.IsDown;
             }
             if (IsAltForm || IsMorphing)
             {
@@ -100,7 +107,7 @@ namespace MphRead.Entities
         private void ProcessTouchInput()
         {
             // the game explicitly checks for Samus, and doesn't check if the weapon menu is open
-            if (!_scene.Multiplayer && Controls.ScanVisor.IsPressed && !Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen)
+            if (GameState.SinglePlayer && Controls.ScanVisor.IsPressed && !Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen)
                 && !IsAltForm && !IsMorphing)
             {
                 if (ScanVisor)
@@ -114,7 +121,7 @@ namespace MphRead.Entities
                     UpdateZoom(zoom: false);
                 }
             }
-            if ((_scene.Multiplayer || _weaponSlots[2] != BeamType.OmegaCannon) && Controls.WeaponMenu.IsDown)
+            if ((GameState.Multiplayer || _weaponSlots[2] != BeamType.OmegaCannon) && Controls.WeaponMenu.IsDown)
             {
                 Flags1 |= PlayerFlags1.NoAimInput;
                 Flags1 |= PlayerFlags1.WeaponMenuOpen;
@@ -373,9 +380,6 @@ namespace MphRead.Entities
             }
         }
 
-        private readonly float[] _pastAimX = new float[8];
-        private readonly float[] _pastAimY = new float[8];
-
         private void UpdateHudShiftY(float amount)
         {
             if (IsMainPlayer)
@@ -428,7 +432,7 @@ namespace MphRead.Entities
 
         private void ProcessBiped()
         {
-            if (IsMainPlayer && !_scene.Multiplayer && CameraSequence.Current != null)
+            if (IsMainPlayer && GameState.SinglePlayer && CameraSequence.Current != null)
             {
                 _timeIdle = 0;
             }
@@ -471,7 +475,7 @@ namespace MphRead.Entities
                     }
                     Biped2Flags |= AnimFlags.NoLoop;
                 }
-                if (Controls.MouseAim && !Flags1.TestFlag(PlayerFlags1.NoAimInput))
+                if (Controls.MouseAim && !Flags1.TestFlag(PlayerFlags1.NoAimInput) && !IsBot)
                 {
                     float aimY = -Input.MouseDeltaY / 4f; // itodo: x and y sensitivity
                     float aimX = -Input.MouseDeltaX / 4f;
@@ -479,6 +483,15 @@ namespace MphRead.Entities
                         || _scene.FrameAdvance || _scene.FrameAdvanceLastFrame) // skdebug
                     {
                         aimX = aimY = 0;
+                    }
+                    if (Controls.KeyboardAim && (Controls.AimLeft.IsDown || Controls.AimRight.IsDown
+                        || Controls.AimUp.IsDown || Controls.AimDown.IsDown))
+                    {
+                        aimX = aimY = 0;
+                    }
+                    if (aimX != 0 || aimY != 0)
+                    {
+                        Input.HasInput = true;
                     }
                     UpdateHudShiftY(aimY);
                     UpdateHudShiftX(aimX);
@@ -520,9 +533,14 @@ namespace MphRead.Entities
                         }
                     }
                 }
-                if (Controls.KeyboardAim)
+                if (Controls.KeyboardAim || IsBot)
                 {
-                    // itodo: button aim
+                    UpdateAimX(_buttonAimX);
+                    UpdateAimY(_buttonAimY);
+                    if (!IsBot)
+                    {
+                        // itodo: button aim (see free cam code for FPS-independent stuff)
+                    }
                 }
                 bool jumping = false;
                 if (!Flags2.TestAny(PlayerFlags2.BipedLock | PlayerFlags2.BipedStuck))
@@ -730,7 +748,7 @@ namespace MphRead.Entities
                     else
                     {
                         bool releaseCharge = false;
-                        if (!Flags2.TestFlag(PlayerFlags2.Shooting) || EquipInfo.GetAmmo() < EquipWeapon.ChargeCost)
+                        if (!Flags2.TestFlag(PlayerFlags2.Shooting) || EquipInfo.Ammo < EquipWeapon.ChargeCost)
                         {
                             releaseCharge = true; // charge released/insufficient
                         }
@@ -766,7 +784,7 @@ namespace MphRead.Entities
                                     int chargeCost = EquipWeapon.ChargeCost * 2; // todo: FPS stuff
                                     int minCost = EquipWeapon.MinChargeCost * 2; // todo: FPS stuff
                                     int cost = minCost + (chargeCost - minCost) * (EquipInfo.ChargeLevel - minCharge) / (fullCharge - minCharge);
-                                    if (EquipInfo.GetAmmo() < cost / 2) // todo: FPS stuff
+                                    if (EquipInfo.Ammo < cost / 2) // todo: FPS stuff
                                     {
                                         EquipInfo.ChargeLevel--;
                                     }
@@ -792,16 +810,17 @@ namespace MphRead.Entities
                         {
                             UpdateZoom(!EquipInfo.Zoomed);
                         }
-                        if (EquipInfo.Zoomed)
+                        if (EquipInfo.Zoomed && CameraSequence.Current == null)
                         {
+                            // note: the game does this during cam seqs, resulting in the FOV thrashing a bit, but it has no visible effect
+                            // since the sin/cos values for projection are set aside in the cam info update that's already occurred above.
                             float zoomFov = Fixed.ToFloat(EquipInfo.Weapon.ZoomFov);
                             Vector3 facing = _facingVector;
 
                             void CheckZoomTargets(EntityType type)
                             {
-                                for (int i = 0; i < _scene.Entities.Count; i++)
+                                foreach (EntityBase entity in _scene.Entities)
                                 {
-                                    EntityBase entity = _scene.Entities[i];
                                     if (entity.Type != type || entity == this || !entity.GetTargetable())
                                     {
                                         continue;
@@ -991,9 +1010,9 @@ namespace MphRead.Entities
                 // todo?: make this more solid to avoid e.g. the battlehammer ammo cost thing
                 EquipInfo.Weapon = Weapons.Current[(int)CurrentWeapon + 9];
             }
-            if (IsBot && !_scene.Multiplayer)
+            if (IsBot && GameState.SinglePlayer)
             {
-                // todo: update bot 1P weapon
+                UpdateAdventureModeBotWeapon();
             }
             BeamSpawnFlags flags = BeamSpawnFlags.NoMuzzle;
             if (_doubleDmgTimer > 0)
@@ -1056,13 +1075,95 @@ namespace MphRead.Entities
             bool homing = result.TestFlag(BeamResultFlags.Homing);
             float amountA = 0x3FFF * _shockCoilTimer / (30f * 2); // todo: FPS stuff
             PlayBeamShotSfx(EquipInfo.Weapon.Beam, charged, continuous, homing, amountA);
-            if (EquipInfo.Weapon.Beam == BeamType.Imperialist && EquipInfo.GetAmmo() >= EquipInfo.Weapon.AmmoCost)
+            if (EquipInfo.Weapon.Beam == BeamType.Imperialist && EquipInfo.Ammo >= EquipInfo.Weapon.AmmoCost)
             {
                 _soundSource.PlaySfx(SfxId.SNIPER_RELOAD);
             }
             EquipInfo.Weapon = curWeapon;
             UnequipOmegaCannon(); // todo?: set the flag if wifi
             return true;
+        }
+
+        public void ResetAdventureModeBotWeapon()
+        {
+            EquipInfo.DrawFuncIds[0] = 255;
+            EquipInfo.DrawFuncIds[1] = 255;
+            EquipInfo.DmgDirTypes[0] = 255;
+            EquipInfo.DmgDirTypes[1] = 255;
+            EquipInfo.UnchargedDamage = UInt16.MaxValue;
+            EquipInfo.HeadshotDamage = UInt16.MaxValue;
+            EquipInfo.MinChargeDamage = UInt16.MaxValue;
+            EquipInfo.ChargedDamage = UInt16.MaxValue;
+            EquipInfo.MinChargeHeadshotDamage = UInt16.MaxValue;
+            EquipInfo.ChargedHeadshotDamage = UInt16.MaxValue;
+            EquipInfo.SplashDamage = UInt16.MaxValue;
+            EquipInfo.MinChargeSplashDamage = UInt16.MaxValue;
+            EquipInfo.ChargedSplashDamage = UInt16.MaxValue;
+            EquipInfo.HomingTolerance = Int32.MaxValue;
+            EquipInfo.InfiniteAmmo = false;
+        }
+
+        private void UpdateAdventureModeBotWeapon()
+        {
+            int encounter = GameState.EncounterState[SlotIndex];
+            if (encounter == 1 || encounter == 3 || encounter == 4)
+            {
+                if (Hunter == Hunter.Kanden)
+                {
+                    EquipInfo.HomingTolerance = 4006;
+                }
+                else if (Hunter == Hunter.Spire || Hunter == Hunter.Weavel)
+                {
+                    EquipInfo.DmgDirTypes[0] = 0;
+                    EquipInfo.DmgDirTypes[1] = 0;
+                }
+            }
+            int index;
+            if (Hunter == Hunter.Guardian)
+            {
+                index = 0;
+                if (EquipInfo.Weapon.Beam == BeamType.Magmaul)
+                {
+                    EquipInfo.DrawFuncIds[0] = 22;
+                    EquipInfo.DrawFuncIds[1] = 22;
+                }
+            }
+            else if (encounter == 1 || encounter == 3 || encounter == 4)
+            {
+                index = 1;
+            }
+            else if (BotLevel == 0)
+            {
+                index = 2;
+            }
+            else if (BotLevel == 1)
+            {
+                index = 3;
+            }
+            else // if (BotLevel == 2)
+            {
+                // note: the game uses index 3, not index 4, for out-of-range bot levels
+                index = 4;
+            }
+            if (encounter == 3 && Hunter == Hunter.Trace)
+            {
+                EquipInfo.UnchargedDamage = 50;
+                EquipInfo.HeadshotDamage = 50;
+            }
+            else if (EquipInfo.Weapon.Beam != BeamType.OmegaCannon) // the game doesn't have this check
+            {
+                Weapons.BotWeaponValues values = Weapons.BotWeapons[index][(int)EquipInfo.Weapon.Beam];
+                EquipInfo.UnchargedDamage = values.UnchargedDamage;
+                EquipInfo.HeadshotDamage = values.UnchargedDamage;
+                EquipInfo.MinChargeDamage = values.ChargedDamage;
+                EquipInfo.ChargedDamage = values.ChargedDamage;
+                EquipInfo.MinChargeHeadshotDamage = values.ChargedDamage;
+                EquipInfo.ChargedHeadshotDamage = values.ChargedDamage;
+                EquipInfo.SplashDamage = values.SplashDamage;
+                EquipInfo.MinChargeSplashDamage = values.ChargedSplashDamage;
+                EquipInfo.ChargedSplashDamage = values.ChargedSplashDamage;
+            }
+            EquipInfo.InfiniteAmmo = true;
         }
 
         private void ProcessAlt()
@@ -1088,10 +1189,40 @@ namespace MphRead.Entities
                     _altRollLrZ = CameraInfo.Field54;
                 }
                 // todo?: field35C targeting(?) stuff
+
+                void UpdateAnimation(float aimX, float aimY)
+                {
+                    if ((Hunter == Hunter.Trace || Hunter == Hunter.Weavel) && Flags1.TestFlag(PlayerFlags1.Grounded))
+                    {
+                        // sktodo: threshold values
+                        if (aimX > 3)
+                        {
+                            _timeIdle = 0;
+                            animId = (int)WeavelAltAnim.Turn; // or TraceAltAnim.MoveBackward
+                            animFlags = AnimFlags.Reverse;
+                            if (_altModel.AnimInfo.Index[0] == animId)
+                            {
+                                _altModel.AnimInfo.Flags[0] &= ~AnimFlags.NoLoop;
+                                _altModel.AnimInfo.Flags[0] |= AnimFlags.Reverse;
+                            }
+                        }
+                        else if (aimX < -3)
+                        {
+                            _timeIdle = 0;
+                            animId = (int)WeavelAltAnim.Turn; // or TraceAltAnim.MoveBackward
+                            if (_altModel.AnimInfo.Index[0] == animId)
+                            {
+                                _altModel.AnimInfo.Flags[0] &= ~AnimFlags.NoLoop;
+                                _altModel.AnimInfo.Flags[0] &= ~AnimFlags.Reverse;
+                            }
+                        }
+                    }
+                }
+
                 if (Values.AltFormStrafe != 0)
                 {
                     // Trace, Sylux, Weavel
-                    if (Controls.MouseAim && !Flags1.TestFlag(PlayerFlags1.NoAimInput))
+                    if (Controls.MouseAim && !Flags1.TestFlag(PlayerFlags1.NoAimInput) && !IsBot)
                     {
                         float aimY = -Input.MouseDeltaY / 4f; // itodo: x and y sensitivity
                         float aimX = -Input.MouseDeltaX / 4f;
@@ -1100,39 +1231,25 @@ namespace MphRead.Entities
                         {
                             aimX = aimY = 0;
                         }
+                        if (aimX != 0 || aimY != 0)
+                        {
+                            Input.HasInput = true;
+                        }
                         UpdateHudShiftY(aimY);
                         UpdateHudShiftX(aimX);
                         UpdateAimY(aimY);
                         UpdateAimX(aimX);
-                        if ((Hunter == Hunter.Trace || Hunter == Hunter.Weavel) && Flags1.TestFlag(PlayerFlags1.Grounded))
-                        {
-                            // sktodo: threshold values
-                            if (aimX > 3)
-                            {
-                                _timeIdle = 0;
-                                animId = (int)WeavelAltAnim.Turn; // or TraceAltAnim.MoveBackward
-                                animFlags = AnimFlags.Reverse;
-                                if (_altModel.AnimInfo.Index[0] == animId)
-                                {
-                                    _altModel.AnimInfo.Flags[0] &= ~AnimFlags.NoLoop;
-                                    _altModel.AnimInfo.Flags[0] |= AnimFlags.Reverse;
-                                }
-                            }
-                            else if (aimX < -3)
-                            {
-                                _timeIdle = 0;
-                                animId = (int)WeavelAltAnim.Turn; // or TraceAltAnim.MoveBackward
-                                if (_altModel.AnimInfo.Index[0] == animId)
-                                {
-                                    _altModel.AnimInfo.Flags[0] &= ~AnimFlags.NoLoop;
-                                    _altModel.AnimInfo.Flags[0] &= ~AnimFlags.Reverse;
-                                }
-                            }
-                        }
+                        UpdateAnimation(aimX, aimY);
                     }
-                    if (Controls.KeyboardAim)
+                    if (Controls.KeyboardAim || IsBot)
                     {
-                        // itodo: button aim
+                        UpdateAimX(_buttonAimX);
+                        UpdateAimY(_buttonAimY);
+                        UpdateAnimation(_buttonAimX, _buttonAimY);
+                        if (!IsBot)
+                        {
+                            // itodo: button aim (see free cam code for FPS-independent stuff)
+                        }
                     }
                     if (!Flags2.TestFlag(PlayerFlags2.BipedLock) && (Hunter != Hunter.Trace || !Flags2.TestFlag(PlayerFlags2.AltAttack)))
                     {
@@ -1367,9 +1484,13 @@ namespace MphRead.Entities
                         else if (Controls.AltAttack.IsPressed)
                         {
                             Flags2 |= PlayerFlags2.AltAttack;
-                            // todo: if bot with encounter state, use alternate values
                             float attackHSpeed = Fixed.ToFloat(Values.LungeHSpeed);
                             float attackVSpeed = Fixed.ToFloat(Values.LungeVSpeed);
+                            if (IsBot && GameState.SinglePlayer && GameState.EncounterState[SlotIndex] == 1)
+                            {
+                                attackHSpeed = 0.3f;
+                                attackVSpeed = 0.45f;
+                            }
                             if (_field70 * Speed.X + _field74 * Speed.Z < attackHSpeed)
                             {
                                 Speed = Speed.WithX(_field70 * attackHSpeed).WithZ(_field74 * attackHSpeed);
@@ -1528,10 +1649,25 @@ namespace MphRead.Entities
                 bomb.NodeRef = NodeRef;
                 bomb.Radius = Fixed.ToFloat(Values.BombRadius);
                 bomb.SelfRadius = Fixed.ToFloat(Values.BombSelfRadius);
-                // todo: if bot and encounter state, set damage values
-                // else...
                 bomb.Damage = (ushort)Values.BombDamage;
                 bomb.EnemyDamage = (ushort)Values.BombEnemyDamage;
+                if (IsBot && GameState.SinglePlayer && (Hunter == Hunter.Kanden || Hunter == Hunter.Sylux))
+                {
+                    int encounter = GameState.EncounterState[SlotIndex];
+                    if (encounter == 1 || encounter == 3 || encounter == 4
+                        || encounter == 0 && BotLevel == 0)
+                    {
+                        bomb.Damage = bomb.EnemyDamage = (ushort)(Hunter == Hunter.Kanden ? 2 : 6);
+                    }
+                    else if (encounter != 0 || BotLevel < 2) // in-game: level !=2
+                    {
+                        bomb.Damage = bomb.EnemyDamage = (ushort)(Hunter == Hunter.Kanden ? 4 : 3);
+                    }
+                    else
+                    {
+                        bomb.Damage = bomb.EnemyDamage = (ushort)(Hunter == Hunter.Kanden ? 8 : 6);
+                    }
+                }
                 if (_doubleDmgTimer > 0)
                 {
                     bomb.Damage *= 2;
@@ -1570,8 +1706,14 @@ namespace MphRead.Entities
             {
                 if (Flags2.TestFlag(PlayerFlags2.AltAttack))
                 {
-                    // todo: if bot and encounter state, set a 10f cooldown
-                    _altAttackCooldown = (ushort)(Values.AltAttackCooldown * 2); // todo: FPS stuff
+                    if (IsBot && GameState.SinglePlayer && GameState.EncounterState[SlotIndex] == 1)
+                    {
+                        _altAttackCooldown = 10 * 2; // todo: FPS stuff
+                    }
+                    else
+                    {
+                        _altAttackCooldown = (ushort)(Values.AltAttackCooldown * 2); // todo: FPS stuff
+                    }
                 }
             }
             else if (Hunter == Hunter.Noxus)
@@ -1932,13 +2074,27 @@ namespace MphRead.Entities
             }
         }
 
-        public static void ProcessInput(KeyboardState keyboardState, MouseState mouseState)
+        public static void ProcessInput(KeyboardState keyboardState, MouseState mouseState, bool noPlayerInput)
         {
             KeyboardState keyboardSnap = keyboardState.GetSnapshot();
             MouseState mouseSnap = mouseState.GetSnapshot();
-            for (int i = 0; i < 1; i++) // skdebug
+            for (int i = 0; i < Players.Count; i++)
             {
                 PlayerEntity player = Players[i];
+                if (player.IsBot && player.LoadFlags.TestFlag(LoadFlags.Active))
+                {
+                    player.AiData.ProcessInput();
+                    continue;
+                }
+                if (!player.IsBot && noPlayerInput)
+                {
+                    continue;
+                }
+                if (i != 0)
+                {
+                    break; // todo: multiple input?
+                }
+                player.Input.HasInput = false;
                 KeyboardState? prevKeyboardSnap = player.Input.KeyboardState;
                 MouseState? prevMouseSnap = player.Input.MouseState;
                 player.Input.PrevKeyboardState = prevKeyboardSnap;
@@ -1958,6 +2114,10 @@ namespace MphRead.Entities
                                 control.IsDown = keyboardSnap.IsKeyDown(control.Key);
                                 control.IsPressed = control.IsDown && !prevDown;
                                 control.IsReleased = !control.IsDown && prevDown;
+                                if (control.IsDown || control.IsPressed || control.IsReleased)
+                                {
+                                    player.Input.HasInput = true;
+                                }
                             }
                         }
                         else if (control.Type == ButtonType.Mouse)
@@ -1984,6 +2144,10 @@ namespace MphRead.Entities
                                 control.IsDown = down;
                                 control.IsPressed = control.IsDown && !prevDown;
                                 control.IsReleased = !control.IsDown && prevDown;
+                                if (control.IsDown || control.IsPressed || control.IsReleased)
+                                {
+                                    player.Input.HasInput = true;
+                                }
                             }
                         }
                         else
@@ -1995,6 +2159,10 @@ namespace MphRead.Entities
                                 || control.Type == ButtonType.ScrollDown && curScrollY < prevScrollY;
                             control.IsPressed = control.IsDown;
                             control.IsReleased = false;
+                            if (control.IsDown)
+                            {
+                                player.Input.HasInput = true;
+                            }
                         }
                     }
                 }
@@ -2003,6 +2171,7 @@ namespace MphRead.Entities
                 {
                     player.Input.ClickX = mouseSnap.X;
                     player.Input.ClickY = mouseSnap.Y;
+                    player.Input.HasInput = true;
                 }
                 else
                 {
@@ -2026,6 +2195,8 @@ namespace MphRead.Entities
             public float MouseDeltaY => (MouseState?.Y - PrevMouseState?.Y) ?? 0;
             public float ClickX { get; set; } = -1;
             public float ClickY { get; set; } = -1;
+
+            public bool HasInput { get; set; }
         }
     }
 

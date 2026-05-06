@@ -67,11 +67,11 @@ namespace MphRead.Entities.Enemies
             _homeVolume = CollisionVolume.Move(_spawner.Data.Fields.S08.WarWasp.Volume2, Position);
             _movementVolume = CollisionVolume.Move(_spawner.Data.Fields.S08.WarWasp.Volume1, Position);
             WeaponInfo weapon = Weapons.EnemyWeapons[version];
-            weapon.UnchargedDamage = _values.BeamDamage;
-            weapon.SplashDamage = _values.SplashDamage;
             _equipInfo = new EquipInfo(weapon, _beams);
             _equipInfo.GetAmmo = () => _ammo;
             _equipInfo.SetAmmo = (newAmmo) => _ammo = newAmmo;
+            _equipInfo.UnchargedDamage = _values.BeamDamage;
+            _equipInfo.SplashDamage = _values.SplashDamage;
             _shotCount = (ushort)(_values.MinShots + Rng.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
             _shotTimer = 30 * 2; // todo: FPS stuff
             SetUpModel(Metadata.EnemyModelNames[10], animIndex: 1);
@@ -109,7 +109,7 @@ namespace MphRead.Entities.Enemies
         private void StartMovingToward(Vector3 target, float step)
         {
             Vector3 travel = target - Position;
-            _stepDistance = step / 2; // todo: FPS stuff
+            _stepDistance = step;
             float distance = travel.Length;
             _stepCount = (int)(distance / _stepDistance) + 1;
             if (distance == 0)
@@ -119,6 +119,9 @@ namespace MphRead.Entities.Enemies
             else
             {
                 _speed = travel * (_stepDistance / distance);
+                // todo: FPS stuff
+                _speed /= 2;
+                _stepCount *= 2;
             }
         }
 
@@ -195,9 +198,9 @@ namespace MphRead.Entities.Enemies
         {
             if (_shotCount > 0 && _shotTimer == 10 * 2) // todo: FPS stuff
             {
-                _equipInfo.Weapon.UnchargedDamage = _values.BeamDamage;
-                _equipInfo.Weapon.SplashDamage = _values.SplashDamage;
-                _equipInfo.Weapon.HeadshotDamage = _values.BeamDamage;
+                _equipInfo.UnchargedDamage = _values.BeamDamage;
+                _equipInfo.SplashDamage = _values.SplashDamage;
+                _equipInfo.HeadshotDamage = _values.BeamDamage;
                 Vector3 spawnPos = Position.AddY(-0.5f);
                 BeamProjectileEntity.Spawn(this, _equipInfo, spawnPos, _aimVector, BeamSpawnFlags.None, NodeRef, _scene);
                 _shotCount--;

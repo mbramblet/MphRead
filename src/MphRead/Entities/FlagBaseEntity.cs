@@ -1,3 +1,4 @@
+using MphRead.Formats;
 using OpenTK.Mathematics;
 
 namespace MphRead.Entities
@@ -5,8 +6,11 @@ namespace MphRead.Entities
     public class FlagBaseEntity : EntityBase
     {
         private readonly FlagBaseEntityData _data;
+        public FlagBaseEntityData Data => _data;
         private readonly CollisionVolume _volume;
         private readonly bool _capture = false;
+
+        public NodeData3? ClosestNode { get; set; } = null;
 
         // flag base has a model in Bounty, but is invisible in Capture
         protected override Vector4? OverrideColor { get; } = new ColorRgb(15, 207, 255).AsVector4();
@@ -19,7 +23,7 @@ namespace MphRead.Entities
             _volume = CollisionVolume.Move(_data.Volume, Position);
             // note: an explicit mode check is necessary because e.g. Sic Transit has OctolithFlags/FlagBases
             // enabled in Defender mode according to their layer masks, but they don't appear in-game
-            GameMode mode = scene.GameMode;
+            GameMode mode = GameState.Mode;
             if (mode == GameMode.Capture)
             {
                 AddPlaceholderModel();
@@ -34,14 +38,8 @@ namespace MphRead.Entities
         public override bool Process()
         {
             base.Process();
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.Player)
-                {
-                    continue;
-                }
-                var player = (PlayerEntity)entity;
                 if (player.OctolithFlag == null || _capture && player.TeamIndex != _data.TeamId)
                 {
                     continue;
@@ -64,14 +62,8 @@ namespace MphRead.Entities
 
         private bool CheckOwnOctolith(PlayerEntity player)
         {
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (OctolithFlagEntity octolith in _scene.GetOctolithFlagEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.OctolithFlag)
-                {
-                    continue;
-                }
-                var octolith = (OctolithFlagEntity)entity;
                 if (octolith.Data.TeamId == player.TeamIndex && !octolith.AtBase)
                 {
                     return false;

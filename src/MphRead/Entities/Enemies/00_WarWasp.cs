@@ -87,7 +87,7 @@ namespace MphRead.Entities.Enemies
         private void StartMovingToward(Vector3 target, float step)
         {
             Vector3 travel = target - Position;
-            _stepDistance = step / 2; // todo: FPS stuff
+            _stepDistance = step;
             float distance = travel.Length;
             _stepCount = (int)(distance / _stepDistance) + 1;
             if (distance == 0)
@@ -97,6 +97,9 @@ namespace MphRead.Entities.Enemies
             else
             {
                 _speed = travel * (_stepDistance / distance);
+                // todo: FPS stuff
+                _speed /= 2;
+                _stepCount *= 2;
             }
         }
 
@@ -104,7 +107,8 @@ namespace MphRead.Entities.Enemies
         {
             _moveTarget = _movePositions[_moveIndex];
             StartMovingToward(_moveTarget, step: _movementType == 3 ? 0.25f : 0.2f);
-            SetTransform(_speed.Normalized(), Vector3.UnitY, Position);
+            Vector3 facing = _speed == Vector3.Zero ? FacingVector : _speed.Normalized();
+            SetTransform(FacingVector, Vector3.UnitY, Position);
         }
 
         private void MoveInCircle()

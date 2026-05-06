@@ -21,12 +21,15 @@ namespace MphRead.Entities
         private float _resetTimer = 0;
         private float _gravity = 0;
 
+        public NodeData3? ClosestNode { get; set; } = null;
+        public NodeData3? BaseClosestNode { get; set; } = null;
+
         public OctolithFlagEntity(OctolithFlagEntityData data, Scene scene) : base(EntityType.OctolithFlag, scene)
         {
             _data = data;
             Id = data.Header.EntityId;
             SetTransform(data.Header.FacingVector, data.Header.UpVector, data.Header.Position);
-            GameMode mode = scene.GameMode;
+            GameMode mode = GameState.Mode;
             Recolor = mode == GameMode.Capture ? data.TeamId : 2;
             _bounty = mode != GameMode.Capture;
             if (mode == GameMode.Capture || mode == GameMode.Bounty || mode == GameMode.BountyTeams)
@@ -51,7 +54,7 @@ namespace MphRead.Entities
                 _carrier = null;
             }
             _lastCarrier = null;
-            // todo: nodedata
+            ClosestNode = BaseClosestNode;
         }
 
         public override void GetVectors(out Vector3 position, out Vector3 up, out Vector3 facing)
@@ -73,14 +76,8 @@ namespace MphRead.Entities
             bool pickedUp = false;
             if (_carrier == null)
             {
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (PlayerEntity player in _scene.GetPlayerEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type != EntityType.Player)
-                    {
-                        continue;
-                    }
-                    var player = (PlayerEntity)entity;
                     if (player.Health == 0 || player.IsAltForm || player.IsMorphing
                         || !_bounty && player.TeamIndex == _data.TeamId && _atBase)
                     {
@@ -114,7 +111,7 @@ namespace MphRead.Entities
                 _atBase = false;
                 _grounded = true;
                 _resetTimer = 0;
-                // todo: nodedata
+                ClosestNode = _carrier.ClosestNode;
                 Position = new Vector3(
                     _carrier.Position.X + -0.35f * _carrier.Field70,
                     _carrier.Position.Y + 1.05f,
@@ -168,6 +165,7 @@ namespace MphRead.Entities
                 (float gravity, float displacement) = ConstantAcceleration(-0.02f, _gravity);
                 Position = Position.AddY(displacement);
                 _gravity = gravity;
+                ClosestNode = null;
                 var results = new CollisionResult[16];
                 int count = CollisionDetection.CheckSphereBetweenPoints(prevPos, Position, radius: 1.25f,
                     limit: 16, includeOffset: false, TestFlags.None, _scene, results);

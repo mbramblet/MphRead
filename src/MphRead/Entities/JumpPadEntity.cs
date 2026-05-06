@@ -1,3 +1,4 @@
+using MphRead.Formats;
 using OpenTK.Mathematics;
 
 namespace MphRead.Entities
@@ -16,6 +17,8 @@ namespace MphRead.Entities
 
         private ushort _cooldownTimer = 0;
 
+        public NodeData3? ClosestNode { get; set; } = null;
+
         public JumpPadEntity(JumpPadEntityData data, string nodeName, Scene scene)
             : base(EntityType.JumpPad, nodeName, scene)
         {
@@ -31,7 +34,7 @@ namespace MphRead.Entities
             _beamTransform = GetTransformMatrix(beamVector, beamVector.X != 0 || beamVector.Z != 0 ? Vector3.UnitY : Vector3.UnitX);
             _beamTransform.Row3.Y = 0.25f;
             _beamVector = Matrix.Vec3MultMtx3(beamVector, Transform) * _data.Speed.FloatValue;
-            if (_scene.GameMode == GameMode.SinglePlayer)
+            if (GameState.Mode == GameMode.SinglePlayer)
             {
                 Active = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0) != 0;
             }
@@ -77,14 +80,8 @@ namespace MphRead.Entities
             }
             if (Active && _cooldownTimer == 0)
             {
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (PlayerEntity player in _scene.GetPlayerEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type != EntityType.Player)
-                    {
-                        continue;
-                    }
-                    var player = (PlayerEntity)entity;
                     if (player.Health == 0)
                     {
                         continue;
@@ -125,7 +122,7 @@ namespace MphRead.Entities
             if (info.Message == Message.Activate)
             {
                 Active = true;
-                if (_scene.GameMode == GameMode.SinglePlayer)
+                if (GameState.Mode == GameMode.SinglePlayer)
                 {
                     GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                 }
@@ -135,7 +132,7 @@ namespace MphRead.Entities
                 if ((int)info.Param1 != 0)
                 {
                     Active = true;
-                    if (_scene.GameMode == GameMode.SinglePlayer)
+                    if (GameState.Mode == GameMode.SinglePlayer)
                     {
                         GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                     }
@@ -143,7 +140,7 @@ namespace MphRead.Entities
                 else
                 {
                     Active = false;
-                    if (_scene.GameMode == GameMode.SinglePlayer)
+                    if (GameState.Mode == GameMode.SinglePlayer)
                     {
                         GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                     }
@@ -191,7 +188,7 @@ namespace MphRead.Entities
 
         private readonly CollisionVolume _volume;
 
-        public FhJumpPadEntity(FhJumpPadEntityData data, Scene scene) : base(EntityType.JumpPad, scene)
+        public FhJumpPadEntity(FhJumpPadEntityData data, Scene scene) : base(EntityType.FhJumpPad, scene)
         {
             _data = data;
             Id = data.Header.EntityId;

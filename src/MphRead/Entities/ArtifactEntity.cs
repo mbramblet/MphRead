@@ -39,7 +39,7 @@ namespace MphRead.Entities
             {
                 SetUpModel("ArtifactBase");
             }
-            Debug.Assert(scene.GameMode == GameMode.SinglePlayer);
+            Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
             Active = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: _data.Active != 0, activeState: 2) != 0;
             if (data.ModelId < 8)
             {
@@ -264,14 +264,8 @@ namespace MphRead.Entities
             {
                 if (info.Sender.Type == EntityType.EnemySpawn && ((EnemySpawnEntity)info.Sender).Data.EnemyType == EnemyType.Hunter)
                 {
-                    for (int i = 0; i < _scene.Entities.Count; i++)
+                    foreach (PlayerEntity player in _scene.GetPlayerEntities())
                     {
-                        EntityBase entity = _scene.Entities[i];
-                        if (entity.Type != EntityType.Player)
-                        {
-                            continue;
-                        }
-                        var player = (PlayerEntity)entity;
                         if (player.EnemySpawner == info.Sender)
                         {
                             player.GetPosition(out Vector3 position);

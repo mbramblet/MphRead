@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -46,7 +47,7 @@ namespace MphRead.Formats
         public static CameraSequence? Current { get; set; }
         public static CameraSequence? Intro { get; set; }
         public bool IsIntro => SequenceId >= 172 && SequenceId <= 198;
-        private static readonly HashSet<int> _cockpitLoops = new HashSet<int>() { 102, 103, 104, 105, 106, 168 };
+        private static readonly FrozenSet<int> _cockpitLoops = [ 102, 103, 104, 105, 106, 168 ];
 
         private CameraSequence(int id, string name, Scene scene,
             CameraSequenceHeader header, IReadOnlyList<RawCameraSequenceKeyframe> keyframes)

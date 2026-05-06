@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using MphRead.Formats;
 using MphRead.Hud;
 using OpenTK.Mathematics;
 
@@ -18,6 +19,7 @@ namespace MphRead.Entities
         private readonly bool[] _occupiedBy = new bool[4];
         private float _blinkTimer = 0;
         private PlayerEntity? _capturedPlayer = null;
+        public PlayerEntity? CapturedPlayer => _capturedPlayer;
         private float _progress = 0;
         private float _scoreTimer = 0;
         private float _curRotation = 0;
@@ -29,10 +31,13 @@ namespace MphRead.Entities
         public int OccupyingTeam => _occupyingTeam;
         public bool Blinking => _blinkTimer > 0;
         public IReadOnlyList<bool> OccupiedBy => _occupiedBy;
+        public bool IsOccupied => _occupiedBy[0] || _occupiedBy[1] || _occupiedBy[2] || _occupiedBy[3];
         public float Progress => _progress;
 
         private readonly Material _terminalMat = null!;
         private readonly Material _ringMat = null!;
+
+        public NodeData3? ClosestNode { get; set; } = null;
 
         public NodeDefenseEntity(NodeDefenseEntityData data, Scene scene) : base(EntityType.NodeDefense, scene)
         {
@@ -40,7 +45,7 @@ namespace MphRead.Entities
             Id = data.Header.EntityId;
             SetTransform(data.Header.FacingVector, data.Header.UpVector, data.Header.Position);
             _volume = CollisionVolume.Move(_data.Volume, Position);
-            GameMode mode = scene.GameMode;
+            GameMode mode = GameState.Mode;
             if (mode == GameMode.Defender || mode == GameMode.DefenderTeams
                 || mode == GameMode.Nodes || mode == GameMode.NodesTeams)
             {
@@ -75,14 +80,8 @@ namespace MphRead.Entities
         {
             int team = 4;
             _contested = false;
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.Player)
-                {
-                    continue;
-                }
-                var player = (PlayerEntity)entity;
                 if (player.Health > 0 && _volume.TestPoint(player.Volume.SpherePosition))
                 {
                     if (team == 4)
@@ -133,14 +132,8 @@ namespace MphRead.Entities
             int slot = 0;
             bool occupiedByAny = false;
             _soundSource.Update(Position, rangeIndex: 17);
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.Player)
-                {
-                    continue;
-                }
-                var player = (PlayerEntity)entity;
                 if (player.Health > 0 && _volume.TestPoint(player.Volume.SpherePosition))
                 {
                     if (_occupyingTeam == player.TeamIndex)
@@ -221,14 +214,8 @@ namespace MphRead.Entities
             }
             if (team != 4)
             {
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (NodeDefenseEntity node in _scene.GetNodeDefenseEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type != EntityType.NodeDefense)
-                    {
-                        continue;
-                    }
-                    var node = (NodeDefenseEntity)entity;
                     if (node._currentTeam == team && node._occupyingTeam == 4)
                     {
                         nodeCount++;

@@ -23,10 +23,10 @@ namespace MphRead.Entities
     public class EnemySpawnEntity : EntityBase
     {
         private readonly EnemySpawnEntityData _data;
-        private int _activeCount = 0; // todo: names are backwards?
-        public int ActiveCount => _activeCount;
         private int _spawnedCount = 0;
         public int SpawnedCount => _spawnedCount;
+        private int _activeCount = 0;
+        public int ActiveCount => _activeCount;
         private int _cooldownTimer = 0;
         private EntityBase? _entity1;
         private EntityBase? _entity2;
@@ -48,7 +48,7 @@ namespace MphRead.Entities
             Id = data.Header.EntityId;
             _rangeNodeRef = scene.GetNodeRefByName(data.NodeName.MarshalString());
             _cooldownTimer = _data.InitialCooldown * 2; // todo: FPS stuff
-            Debug.Assert(scene.GameMode == GameMode.SinglePlayer);
+            Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
             bool active = false;
             int state = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0);
             if (data.AlwaysActive != 0)
@@ -129,14 +129,8 @@ namespace MphRead.Entities
             {
                 if (_rangeNodeRef != NodeRef.None && _scene.CameraMode == CameraMode.Player) // skdebug
                 {
-                    for (int i = 0; i < _scene.Entities.Count; i++)
+                    foreach (PlayerEntity player in _scene.GetPlayerEntities())
                     {
-                        EntityBase entity = _scene.Entities[i];
-                        if (entity.Type != EntityType.Player)
-                        {
-                            continue;
-                        }
-                        var player = (PlayerEntity)entity;
                         if (player.Health > 0 && player.NodeRef == _rangeNodeRef)
                         {
                             Flags &= ~SpawnerFlags.Suspended;
@@ -158,14 +152,9 @@ namespace MphRead.Entities
             if (_data.EnemyType != EnemyType.CarnivorousPlant // the game doesn't have this condition
                 && _scene.CameraMode == CameraMode.Player) // skdebug
             {
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (PlayerEntity player in _scene.GetPlayerEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type != EntityType.Player)
-                    {
-                        continue;
-                    }
-                    if (Vector3.DistanceSquared(Position, entity.Position) < distSqr)
+                    if (Vector3.DistanceSquared(Position, player.Position) < distSqr)
                     {
                         inRange = true;
                         break;
@@ -180,8 +169,8 @@ namespace MphRead.Entities
             {
                 Flags |= SpawnerFlags.Suspended;
             }
-            else if (_spawnedCount < _data.SpawnTotal && _cooldownTimer == 0 && _data.SpawnCount > 0
-                && (_data.SpawnLimit == 0 || _activeCount < _data.SpawnLimit))
+            else if (_activeCount < _data.SpawnLimit && _cooldownTimer == 0 && _data.SpawnCount > 0
+                && (_data.SpawnTotal == 0 || _spawnedCount < _data.SpawnTotal))
             {
                 for (int i = 0; i < _data.SpawnCount; i++)
                 {
@@ -206,16 +195,16 @@ namespace MphRead.Entities
                     {
                         Flags |= SpawnerFlags.PlayAnimation;
                     }
-                    _spawnedCount++;
                     _activeCount++;
+                    _spawnedCount++;
                     _cooldownTimer = _data.CooldownTime * 2; // todo: FPS stuff
-                    if (_spawnedCount >= _data.SpawnTotal || _data.SpawnLimit > 0 && _activeCount >= _data.SpawnLimit)
+                    if (_activeCount >= _data.SpawnLimit || _data.SpawnTotal > 0 && _spawnedCount >= _data.SpawnTotal)
                     {
                         break;
                     }
                 }
             }
-            if (_data.SpawnLimit > 0 && _activeCount >= _data.SpawnLimit && _spawnedCount == 0)
+            if (_data.SpawnTotal > 0 && _spawnedCount >= _data.SpawnTotal && _activeCount == 0)
             {
                 DeactivateAndSendMessages();
             }
@@ -255,7 +244,12 @@ namespace MphRead.Entities
             GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
             if (_data.EnemyType != EnemyType.Hunter || _data.Fields.S09.EncounterType == 1)
             {
-                // todo: update completed encounters in story save (unused?)
+                // this has some effect on music setting events
+                int type = (int)_data.EnemyType;
+                if (type >= 0 && (type >> 3) < 8)
+                {
+                    GameState.StorySave.EnemyEncounters[_scene.AreaId][type >> 3] |= (byte)(1 << (type & 7));
+                }
             }
             if (_data.EnemyType == EnemyType.Cretaphid)
             {
@@ -296,8 +290,8 @@ namespace MphRead.Entities
                 if ((int)info.Param1 != 0)
                 {
                     // enemy was out of range
-                    --_spawnedCount;
                     --_activeCount;
+                    --_spawnedCount;
                     _cooldownTimer = 0;
                 }
                 else
@@ -310,11 +304,11 @@ namespace MphRead.Entities
                     }
                     else
                     {
-                        --_spawnedCount;
+                        --_activeCount;
                         _cooldownTimer = _data.CooldownTime * 2; // todo: FPS stuff
                     }
                 }
-                if (!Flags.TestFlag(SpawnerFlags.Active) && _spawnedCount == 0)
+                if (!Flags.TestFlag(SpawnerFlags.Active) && _activeCount == 0)
                 {
                     DeactivateAndSendMessages();
                 }
@@ -339,14 +333,8 @@ namespace MphRead.Entities
             }
             else if (info.Message == Message.Gorea2Trigger)
             {
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (EnemyInstanceEntity enemy in _scene.GetEnemyInstanceEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type != EntityType.EnemyInstance)
-                    {
-                        continue;
-                    }
-                    var enemy = (EnemyInstanceEntity)entity;
                     if (enemy.EnemyType == EnemyType.Gorea2)
                     {
                         ((Enemy31Entity)enemy).HandleMessage(info);
@@ -448,6 +436,32 @@ namespace MphRead.Entities
             }
             if (type == EnemyType.Trocra)
             {
+                if (scene.RoomId == 91) // Gorea_b1
+                {
+                    // whether intentional or not, Gorea1A only adds 8 slots to the in-game enemy linked list despite spawning 9 enemies
+                    // (1A, head, arm x2, leg x3, 1B, seal sphere). this leaves the last enemy in the room, a Trocra, unable to spawn
+                    // unless another Trocra is destroyed. emulate that behavior here. technically this shouldn't be limited to the boss room.
+                    int enemyCount = 0;
+                    bool isGorea1 = false;
+                    foreach (EnemyInstanceEntity enemy in scene.GetEnemyInstanceEntities())
+                    {
+                        EnemyType enemyType = enemy.EnemyType;
+                        if (enemyType == EnemyType.Gorea1A)
+                        {
+                            enemyCount++;
+                            isGorea1 = true;
+                        }
+                        else if (enemyType == EnemyType.Trocra || enemyType == EnemyType.GoreaHead || enemyType == EnemyType.GoreaArm
+                                || enemyType == EnemyType.GoreaLeg || enemyType == EnemyType.Gorea1B || enemyType == EnemyType.GoreaSealSphere1)
+                        {
+                            enemyCount++;
+                        }
+                    }
+                    if (isGorea1 && enemyCount >= 14)
+                    {
+                        return null;
+                    }
+                }
                 return new Enemy30Entity(new EnemyInstanceEntityData(type, spawner), nodeRef, scene);
             }
             if (type == EnemyType.Gorea2)
@@ -526,7 +540,7 @@ namespace MphRead.Entities
             {
                 return new Enemy51Entity(new EnemyInstanceEntityData(type, spawner), nodeRef, scene);
             }
-            //throw new ProgramException("Invalid enemy type."); // also make non-nullable
+            //throw new ProgramException("Invalid enemy type."); // could make non-nullable
             return null;
         }
     }
@@ -537,7 +551,7 @@ namespace MphRead.Entities
         protected override Vector4? OverrideColor { get; } = new ColorRgb(0x00, 0x00, 0x8B).AsVector4();
 
         // todo: FH enemy spawning
-        public FhEnemySpawnEntity(FhEnemySpawnEntityData data, Scene scene) : base(EntityType.EnemySpawn, scene)
+        public FhEnemySpawnEntity(FhEnemySpawnEntityData data, Scene scene) : base(EntityType.FhEnemySpawn, scene)
         {
             _data = data;
             Id = data.Header.EntityId;

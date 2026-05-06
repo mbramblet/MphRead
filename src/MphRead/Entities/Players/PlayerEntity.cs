@@ -444,6 +444,7 @@ namespace MphRead.Entities
         {
             SlotIndex = slotIndex;
             _beams = SceneSetup.CreateBeamList(16, scene); // in-game: 5
+            AiData = new PlayerAiData(this);
         }
 
         public static void Construct(Scene scene)
@@ -533,7 +534,7 @@ namespace MphRead.Entities
             {
                 SetUpHud();
             }
-            if (_scene.Multiplayer)
+            if (GameState.Multiplayer)
             {
                 _healthMax = 2 * Values.EnergyTank - 1;
                 _ammoMax[UA] = _ammoMax[Missiles] = Values.MpAmmoCap;
@@ -633,7 +634,7 @@ namespace MphRead.Entities
             if (_scene.Room == null || _scene.Room.LoadEntityId == -1)
             {
                 int checkpointId = GameState.StorySave.CheckpointEntityId;
-                if (IsMainPlayer && _scene.GameMode == GameMode.SinglePlayer
+                if (IsMainPlayer && GameState.Mode == GameMode.SinglePlayer
                     && checkpointId != -1 && _scene.TryGetEntity(checkpointId, out EntityBase? checkpoint))
                 {
                     checkpoint.GetVectors(out Vector3 position, out Vector3 up, out Vector3 facing);
@@ -695,7 +696,7 @@ namespace MphRead.Entities
             {
                 _abilities |= AbilityFlags.WeavelAltAttack;
             }
-            if (_scene.Multiplayer)
+            if (GameState.Multiplayer)
             {
                 _health = Values.EnergyTank - 1;
             }
@@ -755,10 +756,12 @@ namespace MphRead.Entities
             Acceleration = Vector3.Zero;
             _accelerationTimer = 0;
             _aimY = 0;
+            _buttonAimX = 0;
+            _buttonAimY = 0;
             NodeRef = nodeRef;
             _gunViewBob = 0;
             _walkViewBob = 0;
-            if (!_scene.Multiplayer && CameraSequence.Current != null)
+            if (GameState.SinglePlayer && CameraSequence.Current != null)
             {
                 _camSwitchTimer = (ushort)(Values.CamSwitchTime * 2); // todo: FPS stuff
                 _field684 = 0;
@@ -766,7 +769,7 @@ namespace MphRead.Entities
             }
             else
             {
-                if (IsMainPlayer && _scene.Multiplayer && CameraSequence.Current?.IsIntro == true)
+                if (IsMainPlayer && GameState.Multiplayer && CameraSequence.Current?.IsIntro == true)
                 {
                     CameraSequence.Current.End();
                 }
@@ -812,7 +815,7 @@ namespace MphRead.Entities
             _bombRefillTimer = 0;
             _bombAmmo = 3;
             _damageInvulnTimer = 0;
-            if (IsBot && !_scene.Multiplayer)
+            if (IsBot && GameState.SinglePlayer)
             {
                 _spawnInvulnTimer = 0;
             }
@@ -841,7 +844,7 @@ namespace MphRead.Entities
             else
             {
                 int rangeIndex = 1;
-                if (!_scene.Multiplayer && Hunter == Hunter.Guardian) // todo: MP1P
+                if (GameState.SinglePlayer && Hunter == Hunter.Guardian) // todo: MP1P
                 {
                     rangeIndex = 21;
                 }
@@ -885,15 +888,15 @@ namespace MphRead.Entities
             Controls.ClearPressed();
             if (IsBot)
             {
-                // todo: set bot AI
+                AiData.InitializeAtSpawn();
             }
             // the player clears the enemy spawner reference here, using a global array to track them
             _lastTarget = null;
             UpdateScanIds();
-            if (respawn && (IsMainPlayer || _scene.Multiplayer))
+            if (respawn && (IsMainPlayer || GameState.Multiplayer))
             {
                 // spawnEffectMP or spawnEffect
-                int effectId = _scene.Multiplayer && PlayerCount > 2 ? 33 : 31;
+                int effectId = GameState.Multiplayer && PlayerCount > 2 && !Features.MaxPlayerDetail ? 33 : 31;
                 _scene.SpawnEffect(effectId, Vector3.UnitX, Vector3.UnitY, Position);
             }
             if (IsMainPlayer)
@@ -915,7 +918,7 @@ namespace MphRead.Entities
         public void InitEnemyHunter()
         {
             Debug.Assert(EnemySpawner != null);
-            Debug.Assert(_scene.GameMode == GameMode.SinglePlayer);
+            Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
             EnemySpawnFields09 data = EnemySpawner.Data.Fields.S09;
             _healthMax = data.HunterHealthMax;
             _health = data.HunterHealth;
@@ -1223,7 +1226,7 @@ namespace MphRead.Entities
         {
             _availableWeapons.ClearAll();
             _availableCharges.ClearAll();
-            if (!_scene.Multiplayer && IsMainPlayer) // todo: MP1P
+            if (GameState.SinglePlayer && IsMainPlayer) // todo: MP1P
             {
                 _availableWeapons.Set(GameState.StorySave.Weapons);
                 _availableCharges.CopyFrom(_availableWeapons);
@@ -1237,7 +1240,7 @@ namespace MphRead.Entities
                     _ammo[i] = save.Ammo[i];
                 }
             }
-            else if (!_scene.Multiplayer && IsBot)
+            else if (GameState.SinglePlayer && IsBot)
             {
                 BeamType affinityBeam = Weapons.GetAffinityBeam(Hunter);
                 WeaponInfo affinityInfo = Weapons.Current[(int)affinityBeam];
@@ -1284,7 +1287,7 @@ namespace MphRead.Entities
                 _availableCharges[beam] = true;
                 _ammo[info.AmmoType] = _ammoMax[info.AmmoType];
             }
-            bool hasAmmo = beam == BeamType.PowerBeam || _ammo[ammoType] >= info.AmmoCost;
+            bool hasAmmo = beam == BeamType.PowerBeam || _ammo[ammoType] >= info.AmmoCost || _ammo[ammoType] == -1;
             if (!silent && (!hasAmmo || !_availableWeapons[beam] || GunAnimation == GunAnimation.UpDown))
             {
                 if (IsMainPlayer)
@@ -1302,7 +1305,7 @@ namespace MphRead.Entities
             PreviousWeapon = CurrentWeapon;
             CurrentWeapon = WeaponSelection = beam;
             if (beam == Weapons.GetAffinityBeam(Hunter)
-                || !_scene.Multiplayer && (Hunter == Hunter.Samus && (beam == BeamType.PowerBeam || beam == BeamType.OmegaCannon)
+                || GameState.SinglePlayer && (Hunter == Hunter.Samus && (beam == BeamType.PowerBeam || beam == BeamType.OmegaCannon)
                 || Hunter == Hunter.Guardian && beam == BeamType.VoltDriver))
             {
                 EquipInfo.Weapon = Weapons.Current[(int)beam + 9];
@@ -1386,7 +1389,7 @@ namespace MphRead.Entities
 
         private void UnequipOmegaCannon()
         {
-            if (CurrentWeapon == BeamType.OmegaCannon && _scene.Multiplayer)
+            if (CurrentWeapon == BeamType.OmegaCannon && GameState.Multiplayer)
             {
                 _availableCharges[BeamType.OmegaCannon] = false;
                 _availableWeapons[BeamType.OmegaCannon] = false;
@@ -1474,7 +1477,7 @@ namespace MphRead.Entities
                     _gunModel.AnimInfo.Flags[0] &= ~AnimFlags.Ended;
                 }
             }
-            else if (_timeSinceInput >= (ulong)Values.GunIdleTime * 2) // todo: FPS stuff
+            else if (!Features.NoIdleSway && _timeSinceInput >= (ulong)Values.GunIdleTime * 2) // todo: FPS stuff
             {
                 if (GunAnimation != GunAnimation.UpDown)
                 {
@@ -1671,7 +1674,7 @@ namespace MphRead.Entities
                 }
             }
             bool ignoreDamage = false;
-            if (!_scene.Multiplayer && IsBot && attacker == this || GameState.Teams && !GameState.FriendlyFire
+            if (GameState.SinglePlayer && IsBot && attacker == this || GameState.Teams && !GameState.FriendlyFire
                 && attacker != null && attacker != this && attacker.TeamIndex == TeamIndex)
             {
                 ignoreDamage = true;
@@ -1679,7 +1682,7 @@ namespace MphRead.Entities
             }
             if (!ignoreDamage && flags.TestFlag(DamageFlags.Headshot) && attacker == Main) // todo: and not on wifi
             {
-                int messageId = _scene.Multiplayer ? 228 : 121; // HEADSHOT!
+                int messageId = GameState.Multiplayer ? 228 : 121; // HEADSHOT!
                 QueueHudMessage(128, 40, 20 / 30f, 0, messageId);
             }
             if (attacker != null && attacker != this && beam != null)
@@ -1723,7 +1726,7 @@ namespace MphRead.Entities
                     _halfturret.Health -= (int)turretDamage;
                 }
                 damage -= turretDamage;
-                if (IsBot && !_scene.Multiplayer && AiData.Flags1.TestFlag(AiFlags1.Bit0))
+                if (IsBot && GameState.SinglePlayer && AiData.Flags1)
                 {
                     if (_health > AiData.HealthThreshold && (_health - damage) <= AiData.HealthThreshold)
                     {
@@ -1737,34 +1740,17 @@ namespace MphRead.Entities
                 _halfturret.TimeSinceDamage = 0;
                 if (IsBot)
                 {
-                    AiData.Field110 = turretDamage;
+                    AiData.DamageFromHalfturret = turretDamage;
                 }
             }
-            if (IsBot)
+            if (IsBot && source != null)
             {
-                // todo-ai: bot AI take damage function
-                // skdebug: allow story progression by unlocking the force field in Echo Hall
-                if (!_scene.Multiplayer && Hunter == Hunter.Weavel && _scene.RoomId == 28 && (_health - damage) / (float)_healthMax <= 0.72f)
-                {
-                    for (int i = 0; i < _scene.Entities.Count; i++)
-                    {
-                        EntityBase entity = _scene.Entities[i];
-                        if (entity.Type == EntityType.ForceField && entity.Id == 19)
-                        {
-                            var forceField = (ForceFieldEntity)entity;
-                            if (forceField.Active)
-                            {
-                                _scene.SendMessage(Message.Unlock, this, entity, 0, 0);
-                            }
-                            break;
-                        }
-                    }
-                }
+                AiData.OnTakeDamage((int)damage, source, attacker);
             }
             // todo?: something for wifi
             // else...
             bool dead = false;
-            if (IsBot && !_scene.Multiplayer && AiData.Flags1.TestFlag(AiFlags1.Bit0) && _health <= AiData.HealthThreshold)
+            if (IsBot && GameState.SinglePlayer && AiData.Flags1 && _health <= AiData.HealthThreshold)
             {
                 dead = true;
             }
@@ -1887,7 +1873,7 @@ namespace MphRead.Entities
                         UpdateDoubleDamageSfx(index: 0, play: false);
                         UpdateCloakSfx(index: 0, play: false);
                         _soundSource.StopFreeSfxScripts();
-                        if (_scene.Multiplayer)
+                        if (GameState.Multiplayer)
                         {
                             PlayHunterSfx(HunterSfx.Death);
                         }
@@ -1905,7 +1891,7 @@ namespace MphRead.Entities
                     }
                     StopBeamChargeSfx(CurrentWeapon);
                 }
-                if (IsBot && AiData.Flags1.TestFlag(AiFlags1.Bit0))
+                if (IsBot && AiData.Flags1)
                 {
                     _health = AiData.HealthThreshold + 1;
                     AiData.Flags2 |= AiFlags2.Bit13;
@@ -1925,7 +1911,7 @@ namespace MphRead.Entities
                 Speed = Vector3.Zero;
                 _respawnTimer = RespawnTime;
                 _timeSinceDead = 0;
-                if (!_scene.Multiplayer)
+                if (GameState.SinglePlayer)
                 {
                     if (IsAltForm)
                     {
@@ -1935,25 +1921,19 @@ namespace MphRead.Entities
                     if (IsBot && GameState.GetAreaState(_scene.AreaId) == AreaState.Clear)
                     {
                         bool unlockDoors = true;
-                        for (int i = 0; i < _scene.Entities.Count; i++)
+                        foreach (EnemySpawnEntity spawner in _scene.GetEnemySpawnEntities())
                         {
-                            EntityBase entity = _scene.Entities[i];
-                            if (entity.Type != EntityType.EnemySpawn)
-                            {
-                                continue;
-                            }
-                            var spawner = (EnemySpawnEntity)entity;
                             if (spawner.Data.EnemyType != EnemyType.Hunter)
                             {
                                 continue;
                             }
                             if (spawner.Flags.TestFlag(SpawnerFlags.Active)
-                                && (spawner.Data.SpawnLimit == 0 || spawner.ActiveCount < spawner.Data.SpawnLimit
-                                || spawner.SpawnedCount != 0))
+                                && (spawner.Data.SpawnTotal == 0 || spawner.SpawnedCount < spawner.Data.SpawnTotal
+                                || spawner.ActiveCount != 0))
                             {
-                                for (int j = 1; j < MaxPlayers; j++)
+                                for (int i = 1; i < MaxPlayers; i++)
                                 {
-                                    if (Players[j].EnemySpawner == spawner)
+                                    if (Players[i].EnemySpawner == spawner)
                                     {
                                         unlockDoors = false;
                                         break;
@@ -1967,15 +1947,9 @@ namespace MphRead.Entities
                         }
                         if (unlockDoors)
                         {
-                            SceneSetup.CompleteEncounter(_scene.RoomId);
-                            for (int i = 0; i < _scene.Entities.Count; i++)
+                            GameState.CompleteRandomEncounter(_scene.RoomId);
+                            foreach (DoorEntity door in _scene.GetDoorEntities())
                             {
-                                EntityBase entity = _scene.Entities[i];
-                                if (entity.Type != EntityType.Door)
-                                {
-                                    continue;
-                                }
-                                var door = (DoorEntity)entity;
                                 if (door.Data.ConnectorId == 255 && door.Id != -1)
                                 {
                                     continue;
@@ -2063,14 +2037,12 @@ namespace MphRead.Entities
                         if (dropId < 8)
                         {
                             RestoreOctolith(dropId);
-                            for (int i = 0; i < _scene.Entities.Count; i++)
+                            foreach (ArtifactEntity artifact in _scene.GetArtifactEntities())
                             {
-                                EntityBase entity = _scene.Entities[i];
-                                if (entity.Type != EntityType.Artifact || entity.Id != -1) // the game doesn't check the ID
+                                if (artifact.Id != -1) // the game doesn't check the ID
                                 {
                                     continue;
                                 }
-                                var artifact = (ArtifactEntity)entity;
                                 if (artifact.ModelId >= 8 && artifact.ArtifactId == dropId)
                                 {
                                     artifact.Position = Position.AddY(1.5f);
@@ -2162,7 +2134,7 @@ namespace MphRead.Entities
                         if (attacker == this)
                         {
                             GameState.Suicides[SlotIndex]++;
-                            if (_scene.GameMode == GameMode.Battle || _scene.GameMode == GameMode.BattleTeams)
+                            if (GameState.Mode == GameMode.Battle || GameState.Mode == GameMode.BattleTeams)
                             {
                                 GameState.Points[SlotIndex]--;
                             }
@@ -2226,7 +2198,7 @@ namespace MphRead.Entities
                                     }
                                     QueueHudMessage(128, 70, 140, 90 / 30f, 2, message);
                                 }
-                                if (_scene.GameMode == GameMode.PrimeHunter)
+                                if (GameState.Mode == GameMode.PrimeHunter)
                                 {
                                     if (attacker.IsPrimeHunter)
                                     {
@@ -2245,15 +2217,14 @@ namespace MphRead.Entities
                                         QueueHudMessage(128, 70, 140, 90 / 30f, 2, message.Replace("%s", nickname));
                                     }
                                 }
-                                else if (_scene.GameMode == GameMode.Battle || _scene.GameMode == GameMode.BattleTeams)
+                                else if (GameState.Mode == GameMode.Battle || GameState.Mode == GameMode.BattleTeams)
                                 {
                                     if (GameState.Points[attacker.SlotIndex] < 99999)
                                     {
                                         GameState.Points[attacker.SlotIndex]++;
                                     }
                                 }
-                                else if ((_scene.GameMode == GameMode.Capture || _scene.GameMode == GameMode.Bounty
-                                    || _scene.GameMode == GameMode.BountyTeams) && OctolithFlag != null)
+                                else if (GameState.IsOctolithMode && OctolithFlag != null)
                                 {
                                     GameState.OctolithStops[attacker.SlotIndex]++;
                                 }
@@ -2268,7 +2239,7 @@ namespace MphRead.Entities
                     else // no attacker
                     {
                         GameState.Suicides[SlotIndex]++;
-                        if (_scene.GameMode == GameMode.Battle || _scene.GameMode == GameMode.BattleTeams)
+                        if (GameState.Mode == GameMode.Battle || GameState.Mode == GameMode.BattleTeams)
                         {
                             GameState.Points[SlotIndex]--;
                         }
@@ -2292,7 +2263,7 @@ namespace MphRead.Entities
                         QueueHudMessage(128, 70, 140, 90 / 30f, 2, 242); // the prime hunter is dead!
                     }
                 }
-                if (_scene.Multiplayer && attacker != null && attacker != this)
+                if (GameState.Multiplayer && attacker != null && attacker != this)
                 {
                     ItemType itemType = ItemType.UASmall;
                     if (attacker.EquipInfo.Weapon.AmmoType == 1)
@@ -2330,7 +2301,7 @@ namespace MphRead.Entities
                             {
                                 if (_timeSinceFrozen > 60 * 2) // todo: FPS stuff
                                 {
-                                    int time = (_scene.Multiplayer || attacker != null ? 75 : 30) * 2; // todo: FPS stuff
+                                    int time = (GameState.Multiplayer || attacker != null ? 75 : 30) * 2; // todo: FPS stuff
                                     _frozenTimer = (ushort)time;
                                 }
                                 else if (_frozenTimer < 15 * 2) // todo: FPS stuff
@@ -2361,9 +2332,14 @@ namespace MphRead.Entities
                         else // todo?: if wifi, only do this if main player
                         {
                             ushort time = 150 * 2; // todo: FPS stuff
-                            if (attacker?.IsBot == true && !_scene.Multiplayer) // todo: check encounter state
+                            if (attacker != null)
                             {
-                                time = 75 * 2; // todo: FPS stuff
+                                int encounter = GameState.EncounterState[attacker.SlotIndex];
+                                if (attacker.IsBot && GameState.SinglePlayer
+                                    && (encounter == 1 || encounter == 3 || encounter == 4))
+                                {
+                                    time = 75 * 2; // todo: FPS stuff
+                                }
                             }
                             _burnedBy = beam.Owner;
                             _burnTimer = time;

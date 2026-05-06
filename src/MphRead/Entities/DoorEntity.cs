@@ -69,7 +69,7 @@ namespace MphRead.Entities
             inst.AnimInfo.Flags[1] |= AnimFlags.Reverse;
             _lock = SetUpModel(meta.LockName);
             _lockTransform = Matrix4.CreateTranslation(0, meta.LockOffset, 0);
-            Debug.Assert(scene.GameMode == GameMode.SinglePlayer);
+            Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
             int state = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: _data.Locked != 0);
             if (state != 0 && !Cheats.UnlockAllDoors)
             {
@@ -245,16 +245,11 @@ namespace MphRead.Entities
                 Debug.Assert(_scene.Room != null && _scene.Room.LoaderDoor == null);
                 _scene.Room.LoaderDoor = this;
                 GameState.TransitionRoomId = TargetRoomId;
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (DoorEntity other in _scene.GetDoorEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type == EntityType.Door)
+                    if (other.LoaderDoor == this)
                     {
-                        var other = (DoorEntity)entity;
-                        if (other.LoaderDoor == this)
-                        {
-                            other.ForceClose();
-                        }
+                        other.ForceClose();
                     }
                 }
             }
@@ -413,14 +408,8 @@ namespace MphRead.Entities
             {
                 return false;
             }
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.Player)
-                {
-                    continue;
-                }
-                var player = (PlayerEntity)entity;
                 if (player.Health > 0 && !player.IsBot && (Position - player.Position).LengthSquared < 16)
                 {
                     return true;
@@ -492,23 +481,21 @@ namespace MphRead.Entities
             }
             else if (info.Message == Message.UnlockConnectors)
             {
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (DoorEntity door in _scene.GetDoorEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type == EntityType.Door && entity.Id == -1)
+                    if (door.Id == -1)
                     {
-                        ((DoorEntity)entity).Unlock(updateState: true, noLockAnimSfx: false);
+                        door.Unlock(updateState: true, noLockAnimSfx: false);
                     }
                 }
             }
             else if (info.Message == Message.LockConnectors)
             {
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (DoorEntity door in _scene.GetDoorEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type == EntityType.Door && entity.Id == -1)
+                    if (door.Id == -1)
                     {
-                        ((DoorEntity)entity).Lock(updateState: true);
+                        door.Lock(updateState: true);
                     }
                 }
             }
@@ -567,7 +554,7 @@ namespace MphRead.Entities
     {
         private readonly FhDoorEntityData _data;
 
-        public FhDoorEntity(FhDoorEntityData data, Scene scene) : base(EntityType.Door, scene)
+        public FhDoorEntity(FhDoorEntityData data, Scene scene) : base(EntityType.FhDoor, scene)
         {
             _data = data;
             Id = data.Header.EntityId;

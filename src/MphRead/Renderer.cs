@@ -4,7 +4,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime;
 using System.Text;
@@ -45,6 +44,7 @@ namespace MphRead
         PlayerLimit,
         CameraLimit,
         NodeBounds,
+        NodeData,
         Portal
     }
 
@@ -119,14 +119,12 @@ namespace MphRead
         private int _showInvisible = 0;
         private bool _showNodeData = false;
         private VolumeDisplay _showVolumes = VolumeDisplay.None;
+        private int _showBotAiSlot = -1;
         private bool _showCollision = false;
         private bool _showAllNodes = false;
         private bool _transformRoomNodes = false;
         private bool _outputCameraPos = false;
 
-        private readonly List<EntityBase> _entities = new List<EntityBase>();
-        private readonly List<EntityBase> _destroyedEntities = new List<EntityBase>();
-        private readonly Dictionary<int, EntityBase> _entityMap = new Dictionary<int, EntityBase>();
         // map each model's texture ID/palette ID combinations to the bound OpenGL texture ID and "onlyOpaque" boolean
         private int _textureCount = 0;
         private readonly Dictionary<int, TextureMap> _texPalMap = new Dictionary<int, TextureMap>();
@@ -168,8 +166,6 @@ namespace MphRead
         public bool Exiting => _exiting;
         private bool _roomLoaded = false;
         private RoomEntity? _room = null;
-        public GameMode GameMode { get; set; } = GameMode.SinglePlayer;
-        public bool Multiplayer => GameMode != GameMode.SinglePlayer;
         public int RoomId { get; set; } = -1;
         public int AreaId { get; set; } = -1;
 
@@ -212,7 +208,6 @@ namespace MphRead
         public Vector3 Light1Color => _light1Color;
         public Vector3 Light2Vector => _light2Vector;
         public Vector3 Light2Color => _light2Color;
-        public IReadOnlyList<EntityBase> Entities => _entities;
         public RoomEntity? Room => _room;
         public int ActiveCutscene => _activeCutscene;
         // todo: disallow if camera roll is not zero?
@@ -249,15 +244,15 @@ namespace MphRead
                 throw new ProgramException("Cannot load more than one room in a scene.");
             }
             _roomLoaded = true;
-            GameMode = mode;
+            GameState.Mode = mode;
             (RoomEntity room, RoomMetadata meta, CollisionInstance collision, IReadOnlyList<EntityBase> entities)
                 = SceneSetup.LoadGame(name, this, playerCount, bossFlags, nodeLayerMask, entityLayerId);
             GameState.StorySave.SetVisitedRoom(RoomId);
-            if (GameMode == GameMode.None)
+            if (GameState.Mode == GameMode.None)
             {
-                GameMode = meta.Multiplayer ? GameMode.Battle : GameMode.SinglePlayer;
+                GameState.Mode = meta.Multiplayer ? GameMode.Battle : GameMode.SinglePlayer;
             }
-            _entities.Add(room);
+            _entities.AddFirst(room);
             InitEntity(room);
             _room = room;
             if (meta.InGameName != null)
@@ -266,21 +261,31 @@ namespace MphRead
             }
             foreach (EntityBase entity in entities)
             {
-                _entities.Add(entity);
+                InsertEntityByType(entity);
                 Debug.Assert(entity.Id != -1);
                 _entityMap.Add(entity.Id, entity);
                 InitEntity(entity);
+                entity.Initialized = false;
             }
             SceneSetup.LoadItemResources(this);
             SceneSetup.LoadObjectResources(this);
             SceneSetup.LoadPlatformResources(this);
             SceneSetup.LoadEnemyResources(this);
             GameState.Setup(this);
-            if (Multiplayer)
+            PlayerEntity.PlayerAiData.InitializeGlobals();
+            if (GameState.Multiplayer)
             {
                 Menu.ApplyMultiplayerSettings();
             }
             SetRoomValues(meta);
+            for (int i = 0; i < PlayerEntity.Players.Count; i++)
+            {
+                PlayerEntity player = PlayerEntity.Players[i];
+                if (player.IsBot)
+                {
+                    player.AiData.InitializeAtLoad();
+                }
+            }
             _cameraMode = PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active) ? CameraMode.Player : CameraMode.Roam;
             _inputMode = _cameraMode == CameraMode.Player ? InputMode.All : InputMode.CameraOnly;
         }
@@ -336,7 +341,7 @@ namespace MphRead
         {
             ModelInstance model = Read.GetModelInstance(name, firstHunt, dir);
             var entity = new ModelEntity(model, this, recolor);
-            _entities.Add(entity);
+            InsertEntityByType(entity);
             if (entity.Id != -1)
             {
                 _entityMap.Add(entity.Id, entity);
@@ -347,29 +352,6 @@ namespace MphRead
                 entity.Position = pos.Value;
             }
             return entity;
-        }
-
-        // called after load -- entity needs init
-        public void AddEntity(EntityBase entity)
-        {
-            InsertEntity(entity);
-            InitializeEntity(entity);
-        }
-
-        public void InsertEntity(EntityBase entity)
-        {
-            _entities.Add(entity);
-            if (entity.Id != -1)
-            {
-                _entityMap.Add(entity.Id, entity);
-            }
-        }
-
-        public void InitializeEntity(EntityBase entity)
-        {
-            // important to call in this order because the entity may add models (at least in development)
-            entity.Initialize();
-            InitEntity(entity);
         }
 
         public void AddPlayer(Hunter hunter, int recolor = 0, int team = -1, Vector3? position = null)
@@ -389,56 +371,10 @@ namespace MphRead
                         Debug.Assert(team == 0 || team == 1);
                         player.TeamIndex = team;
                     }
+                    player.IsBot = PlayerEntity.PlayerCount >= 1;
                     PlayerEntity.PlayerCount++;
                 }
             }
-        }
-
-        public bool TryGetEntity(int id, [NotNullWhen(true)] out EntityBase? entity)
-        {
-            return _entityMap.TryGetValue(id, out entity);
-        }
-
-        public bool TryGetEntity(EntityType entityType, [NotNullWhen(true)] out EntityBase? entity)
-        {
-            for (int i = 0; i < _entities.Count; i++)
-            {
-                EntityBase item = _entities[i];
-                if (item.Type == entityType)
-                {
-                    entity = item;
-                    return true;
-                }
-            }
-            entity = null;
-            return false;
-        }
-
-        public bool TryGetEntity(EnemyType enemyType, [NotNullWhen(true)] out EnemyInstanceEntity? entity)
-        {
-            for (int i = 0; i < _entities.Count; i++)
-            {
-                EntityBase item = _entities[i];
-                if (item.Type == EntityType.EnemyInstance && item is EnemyInstanceEntity enemy
-                    && enemy.EnemyType == enemyType)
-                {
-                    entity = enemy;
-                    return true;
-                }
-            }
-            entity = null;
-            return false;
-        }
-
-        public void RemoveEntity(EntityBase entity)
-        {
-            _entityMap.Remove(entity.Id);
-            _entities.Remove(entity);
-        }
-
-        public void RemoveEntityFromMap(EntityBase entity)
-        {
-            _entityMap.Remove(entity.Id);
         }
 
         public NodeRef UpdateNodeRef(NodeRef current, Vector3 prevPos, Vector3 curPos)
@@ -479,18 +415,21 @@ namespace MphRead
             {
                 _freeRenderItems.Enqueue(new RenderItem());
             }
-            // entities added during initialization of other entities will already be initialized
-            int count = _entities.Count;
-            for (int i = 0; i < count; i++)
+            foreach (EntityBase entity in Entities)
             {
-                _entities[i].Initialize();
+                // entities added during initialization of other entities will already be initialized
+                if (!entity.Initialized)
+                {
+                    entity.Initialize();
+                    entity.Initialized = true;
+                }
             }
             // todo: probably revisit this
             foreach (PlayerEntity player in PlayerEntity.Players)
             {
                 if (player.LoadFlags.TestFlag(LoadFlags.SlotActive))
                 {
-                    _entities.Add(player);
+                    InsertEntityByType(player);
                     player.Initialize();
                     InitEntity(player);
                     InitEntity(player.Halfturret);
@@ -1180,14 +1119,11 @@ namespace MphRead
                 {
                     _elapsedTime += _frameTime;
                 }
-                if (_inputMode != InputMode.CameraOnly)
-                {
-                    PlayerEntity.ProcessInput(_keyboardState, _mouseState);
-                }
-                else
+                if (_inputMode == InputMode.CameraOnly)
                 {
                     PlayerEntity.Main.Controls.ClearAll();
                 }
+                PlayerEntity.ProcessInput(_keyboardState, _mouseState, _inputMode == InputMode.CameraOnly);
                 _room?.UpdateTransition();
             }
             OnKeyHeld();
@@ -1205,7 +1141,6 @@ namespace MphRead
                 _freeRenderItems.Enqueue(item);
             }
             _nextPolygonId = 1;
-            _destroyedEntities.Clear();
             if (ProcessFrame)
             {
                 GameState.ProcessFrame(this);
@@ -1241,11 +1176,16 @@ namespace MphRead
             _frameAdvanceLastFrame = _frameAdvanceOn;
         }
 
+        public Matrix4 GetPerspectiveMatrix(float fov)
+        {
+            float aspect = Size.X / (float)Size.Y;
+            return Matrix4.CreatePerspectiveFieldOfView(fov, aspect, _nearClip, _useClip ? _farClip : 10000f);
+        }
+
         private void UpdateProjection()
         {
             // todo: update this only when the viewport or camera values change
-            float aspect = Size.X / (float)Size.Y;
-            _perspectiveMatrix = Matrix4.CreatePerspectiveFieldOfView(_cameraFov, aspect, _nearClip, _useClip ? _farClip : 10000f);
+            _perspectiveMatrix = GetPerspectiveMatrix(_cameraFov);
             GL.UniformMatrix4(_shaderLocations.ProjectionMatrix, transpose: false, ref _perspectiveMatrix);
             // update frustum info
             Vector3 camPos = PlayerEntity.Main.CameraInfo.Position;
@@ -1264,6 +1204,7 @@ namespace MphRead
                 return new Vector4(normal, w);
             }
 
+            float aspect = Size.X / (float)Size.Y;
             float cosFov = MathF.Cos(_cameraFov / 2);
             float cosFovDiv = cosFov / aspect;
             float sinFov = MathF.Sin(_cameraFov / 2);
@@ -1425,6 +1366,10 @@ namespace MphRead
                 UnsetHudLayerUniforms();
             }
 
+            GL.UseProgram(_rttShaderProgramId);
+            GL.Uniform1(_shaderLocations.LayerAlpha, 1f);
+            GL.Uniform4(_shaderLocations.FadeColor, Vector4.Zero);
+
             if (PlayerEntity.Main.HudDisruptedState != 0 || PlayerEntity.Main.HudWhiteoutState != -1)
             {
                 float div = _elapsedTime / (1 / 30f);
@@ -1440,12 +1385,6 @@ namespace MphRead
                     GL.Uniform1(_shaderLocations.WhiteoutTable, 192, PlayerEntity.HudWhiteoutTable);
                 }
             }
-            else
-            {
-                GL.UseProgram(_rttShaderProgramId);
-            }
-            GL.Uniform1(_shaderLocations.LayerAlpha, 1f);
-            GL.Uniform4(_shaderLocations.FadeColor, Vector4.Zero);
 
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
             GL.Clear(ClearBufferMask.ColorBufferBit);
@@ -2671,15 +2610,27 @@ namespace MphRead
                     PlayerEntity.Main.UpdateTimedSounds();
                     PlayerEntity.Main.ProcessHudMessageQueue();
                 }
-                for (int i = 0; i < _entities.Count; i++)
+                foreach (EntityBase entity in Entities)
                 {
-                    EntityBase entity = _entities[i];
                     if (entity.Initialized && !entity.Process())
                     {
                         SendMessage(Message.Destroyed, entity, null, 0, 0, delay: 1);
                         // todo: need to handle destroying vs. unloading etc.
                         entity.Destroy();
-                        _destroyedEntities.Add(entity);
+                        RemoveEntity(entity);
+                    }
+                }
+                PlayerEntity.PlayerAiData.UpdateVisibilityAndGlobals(this);
+                for (int i = 0; i < PlayerEntity.Players.Count; i++)
+                {
+                    PlayerEntity.Players[i].ClosestNode = null;
+                }
+                for (int i = 0; i < PlayerEntity.Players.Count; i++)
+                {
+                    PlayerEntity player = PlayerEntity.Players[i];
+                    if (player.IsBot && player.Health != 0)
+                    {
+                        player.AiData.Process();
                     }
                 }
                 if (playerActive)
@@ -2687,9 +2638,9 @@ namespace MphRead
                     PlayerEntity.Main.ProcessModeHud();
                 }
                 GameState.UpdateFrame(this);
-                GameState.UpdateState(this);
+                GameState.UpdateState();
             }
-            else if (!Multiplayer)
+            else if (GameState.SinglePlayer)
             {
                 if (playerActive)
                 {
@@ -2707,33 +2658,22 @@ namespace MphRead
                 _room.GetDrawInfo();
                 _room.GetDisplayVolumes();
             }
-            for (int i = 0; i < _entities.Count; i++)
+            foreach (PlayerEntity player in GetPlayerEntities())
             {
-                EntityBase entity = _entities[i];
-                if (!entity.Initialized)
+                if (!player.Initialized)
                 {
                     continue;
                 }
-                if (entity.Type != EntityType.Player || _destroyedEntities.Contains(entity))
-                {
-                    continue;
-                }
-                var player = (PlayerEntity)entity;
                 if (player.LoadFlags.TestFlag(LoadFlags.Active))
                 {
                     player.Draw();
                     // skdebug
-                    entity.GetDisplayVolumes();
+                    player.GetDisplayVolumes();
                 }
             }
-            for (int i = 0; i < _entities.Count; i++)
+            foreach (EntityBase entity in Entities)
             {
-                EntityBase entity = _entities[i];
-                if (!entity.Initialized)
-                {
-                    continue;
-                }
-                if (entity.Type == EntityType.Player || entity.Type == EntityType.Room || _destroyedEntities.Contains(entity))
+                if (!entity.Initialized || entity.Type == EntityType.Player || entity.Type == EntityType.Room)
                 {
                     continue;
                 }
@@ -2745,12 +2685,6 @@ namespace MphRead
                 {
                     entity.GetDisplayVolumes();
                 }
-            }
-
-            for (int i = 0; i < _destroyedEntities.Count; i++)
-            {
-                EntityBase entity = _destroyedEntities[i];
-                RemoveEntity(entity);
             }
 
             if (ProcessFrame && GameState.MatchState == MatchState.InProgress && !GameState.DialogPause)
@@ -2895,7 +2829,7 @@ namespace MphRead
         {
             DoCleanup();
             // todo: if this has callers in the future, determine save type
-            if (!Multiplayer)
+            if (GameState.SinglePlayer)
             {
                 Menu.NeededSave = Menu.SaveFromExit;
             }
@@ -2922,7 +2856,7 @@ namespace MphRead
             {
                 _fadeType = FadeType.None;
                 DoCleanup();
-                if (!Multiplayer)
+                if (GameState.SinglePlayer)
                 {
                     Menu.NeededSave = _afterFade == AfterFade.EnterShip ? Menu.SaveFromShip : Menu.SaveFromExit;
                     if (_afterFade == AfterFade.EnterShip)
@@ -3947,6 +3881,28 @@ namespace MphRead
                     }
                 }
             }
+            else if (e.Key == Keys.J && _showBotAiSlot != -1)
+            {
+                if (e.Shift)
+                {
+                    if (_showBotAiSlot <= 0)
+                    {
+                        _showBotAiSlot = 3;
+                    }
+                    else
+                    {
+                        _showBotAiSlot--;
+                    }
+                }
+                else if (_showBotAiSlot >= 3)
+                {
+                    _showBotAiSlot = 0;
+                }
+                else
+                {
+                    _showBotAiSlot++;
+                }
+            }
             else if (e.Key == Keys.K)
             {
                 if (e.Alt)
@@ -4037,12 +3993,19 @@ namespace MphRead
                     _wireframe = !_wireframe;
                 }
             }
-            else if (e.Key == Keys.B && !e.Alt)
+            else if (e.Key == Keys.B)
             {
-                _faceCulling = !_faceCulling;
-                if (!_faceCulling)
+                if (e.Alt)
                 {
-                    GL.Disable(EnableCap.CullFace);
+                    _showBotAiSlot = _showBotAiSlot == -1 ? 1 : -1;
+                }
+                else
+                {
+                    _faceCulling = !_faceCulling;
+                    if (!_faceCulling)
+                    {
+                        GL.Disable(EnableCap.CullFace);
+                    }
                 }
             }
             else if (e.Key == Keys.F)
@@ -4403,31 +4366,58 @@ namespace MphRead
             string recording = _recording ? " - Recording" : "";
             string frameAdvance = _frameAdvanceOn ? " - Frame Advance" : "";
             _sb.AppendLine($"MphRead Version {Program.Version}{recording}{frameAdvance}");
-            if (_showCollision)
+            if (_showBotAiSlot >= 0 && _showBotAiSlot <= 3)
             {
-                OutputGetCollisionMenu();
+                OutputGetBotAi();
             }
-            if (Selection.Entity != null)
+            else
             {
-                OutputGetEntityInfo();
-                if (Selection.Instance != null)
+                if (_showCollision)
                 {
-                    OutputGetModel();
-                    if (Selection.Node != null)
+                    OutputGetCollisionMenu();
+                }
+                if (Selection.Entity != null)
+                {
+                    OutputGetEntityInfo();
+                    if (Selection.Instance != null)
                     {
-                        OutputGetNode();
-                        if (Selection.Mesh != null)
+                        OutputGetModel();
+                        if (Selection.Node != null)
                         {
-                            OutputGetMesh();
+                            OutputGetNode();
+                            if (Selection.Mesh != null)
+                            {
+                                OutputGetMesh();
+                            }
                         }
                     }
                 }
-            }
-            else if (!_showCollision)
-            {
-                OutputGetMenu();
+                else if (!_showCollision)
+                {
+                    OutputGetMenu();
+                }
             }
             return _sb.ToString();
+        }
+
+        private void OutputGetBotAi()
+        {
+            PlayerEntity player = PlayerEntity.Players[_showBotAiSlot];
+            _sb.AppendLine();
+            _sb.AppendLine($"Bot AI slot: {_showBotAiSlot} (J: Next slot, Shift+J: Previous slot)");
+            if (!player.LoadFlags.TestFlag(LoadFlags.SlotActive) && !player.LoadFlags.TestFlag(LoadFlags.Active))
+            {
+                _sb.AppendLine("none");
+            }
+            else if (!player.IsBot)
+            {
+                _sb.AppendLine($"Player - {player.Hunter}");
+            }
+            else
+            {
+                _sb.AppendLine($"Bot - {player.Hunter}");
+                player.AiData.GetOuptut(_sb);
+            }
         }
 
         private void OutputGetCollisionMenu()
@@ -4473,6 +4463,7 @@ namespace MphRead
                 VolumeDisplay.PlayerLimit => "room limits (player)",
                 VolumeDisplay.CameraLimit => "room limits (camera)",
                 VolumeDisplay.NodeBounds => "room node bounds",
+                VolumeDisplay.NodeData => "node data radius",
                 VolumeDisplay.Portal => "portals",
                 _ => "off"
             };
@@ -4890,7 +4881,7 @@ namespace MphRead
             if (e.Key == Keys.Escape)
             {
                 Scene.DoCleanup();
-                if (!Scene.Multiplayer)
+                if (GameState.SinglePlayer)
                 {
                     Menu.NeededSave = Menu.SaveFromExit;
                 }

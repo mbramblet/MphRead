@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using MphRead.Effects;
+using MphRead.Formats;
 using MphRead.Formats.Culling;
 using OpenTK.Mathematics;
 
@@ -32,6 +33,7 @@ namespace MphRead.Entities
 
         public int DespawnTimer { get; set; } = -1;
         public ItemSpawnEntity? Owner { get; set; }
+        public NodeData3? ClosestNode { get; set; } = null;
 
         private static readonly IReadOnlyList<int> _scanIds = new int[22]
         {
@@ -44,7 +46,7 @@ namespace MphRead.Entities
             Position = data.Position;
             ItemType = data.ItemType;
             _scanId = _scanIds[(int)data.ItemType];
-            if (scene.Multiplayer && GameState.AffinityWeapons && (ItemType == ItemType.VoltDriver
+            if (GameState.Multiplayer && GameState.AffinityWeapons && (ItemType == ItemType.VoltDriver
                 || ItemType == ItemType.Battlehammer || ItemType == ItemType.Imperialist
                 || ItemType == ItemType.Judicator || ItemType == ItemType.Magmaul || ItemType == ItemType.ShockCoil))
             {
@@ -114,7 +116,7 @@ namespace MphRead.Entities
                 if (Owner != null)
                 {
                     Owner.Item = null;
-                    if (!_scene.Multiplayer)
+                    if (GameState.SinglePlayer)
                     {
                         GameState.StorySave.SetRoomState(_scene.RoomId, Owner.Id, state: 1);
                         if (!Owner.AlwaysActive)
@@ -135,7 +137,7 @@ namespace MphRead.Entities
             {
                 _soundSource.PlaySfx(sfx, loop: true);
             }
-            if (Owner == null && !_scene.Multiplayer && PlayerEntity.Main.EquipInfo.Weapon != null)
+            if (Owner == null && GameState.SinglePlayer && PlayerEntity.Main.EquipInfo.Weapon != null)
             {
                 EquipInfo equip = PlayerEntity.Main.EquipInfo;
                 if (equip.ChargeLevel >= equip.Weapon.MinCharge * 2) // todo: FPS stuff
@@ -160,7 +162,7 @@ namespace MphRead.Entities
         {
             DespawnTimer = 0;
             Owner?.OnItemPickedUp();
-            if (!_scene.Multiplayer)
+            if (GameState.SinglePlayer)
             {
                 int scanId = GetScanId();
                 GameState.StorySave.UpdateLogbook(scanId);
@@ -201,7 +203,7 @@ namespace MphRead.Entities
     public class FhItemEntity : SpinningEntityBase
     {
         public FhItemEntity(FhItemInstanceEntityData data, Scene scene)
-            : base(0.35f, Vector3.UnitY, 0, 0, EntityType.ItemInstance, scene)
+            : base(0.35f, Vector3.UnitY, 0, 0, EntityType.FhItemInstance, scene)
         {
             // note: the actual height at creation is 1.0f greater than the spawner's,
             // but 0.5f is subtracted when drawing (after the floating calculation)

@@ -38,6 +38,13 @@ namespace MphRead.Entities.Enemies
             _values = Metadata.Enemy36Values[(int)_spawner.Data.Fields.S06.EnemySubtype];
             Vector3 facing = _spawner.Data.Header.FacingVector.ToFloatVector().Normalized();
             Vector3 up = FixParallelVectors(facing, Vector3.UnitY);
+            // todo: see comment about this hack in Enemy35Entity
+            if (facing == Vector3.UnitY)
+            {
+                Vector3 swap = facing;
+                facing = up;
+                up = swap;
+            }
             SetTransform(facing, up, _spawner.Data.Header.Position.ToFloatVector());
             Flags |= EnemyFlags.Visible;
             Flags |= EnemyFlags.OnRadar;
@@ -49,14 +56,16 @@ namespace MphRead.Entities.Enemies
             Metadata.LoadEffectiveness(_values.Effectiveness, BeamEffectiveness);
             _scanId = _values.ScanId;
             WeaponInfo weapon = Weapons.EnemyWeapons[version];
-            weapon.UnchargedDamage = _values.BeamDamage;
-            weapon.SplashDamage = _values.SplashDamage;
             _equipInfo1 = new EquipInfo(weapon, _beams);
             _equipInfo2 = new EquipInfo(weapon, _beams);
             _equipInfo1.GetAmmo = () => _ammo1;
             _equipInfo1.SetAmmo = (newAmmo) => _ammo1 = newAmmo;
             _equipInfo1.GetAmmo = () => _ammo2;
             _equipInfo1.SetAmmo = (newAmmo) => _ammo2 = newAmmo;
+            _equipInfo1.UnchargedDamage = _values.BeamDamage;
+            _equipInfo1.SplashDamage = _values.SplashDamage;
+            _equipInfo2.UnchargedDamage = _values.BeamDamage;
+            _equipInfo2.SplashDamage = _values.SplashDamage;
             // todo: FPS stuff
             float minFactor = Fixed.ToFloat(_values.MinSpeedFactor);
             float maxFactor = Fixed.ToFloat(_values.MaxSpeedFactor);
@@ -168,9 +177,12 @@ namespace MphRead.Entities.Enemies
                 Vector3 facing = FacingVector;
                 Vector3 spawnPos1 = Position.AddX(-0.43f);
                 Vector3 spawnPos2 = Position.AddX(0.43f);
-                _equipInfo1.Weapon.UnchargedDamage = _values.BeamDamage;
-                _equipInfo1.Weapon.SplashDamage = _values.SplashDamage;
-                _equipInfo1.Weapon.HeadshotDamage = _values.BeamDamage;
+                _equipInfo1.UnchargedDamage = _values.BeamDamage;
+                _equipInfo1.SplashDamage = _values.SplashDamage;
+                _equipInfo1.HeadshotDamage = _values.BeamDamage;
+                _equipInfo2.UnchargedDamage = _values.BeamDamage;
+                _equipInfo2.SplashDamage = _values.SplashDamage;
+                _equipInfo2.HeadshotDamage = _values.BeamDamage;
                 BeamProjectileEntity.Spawn(this, _equipInfo1, spawnPos1, facing, BeamSpawnFlags.None, NodeRef, _scene);
                 BeamProjectileEntity.Spawn(this, _equipInfo2, spawnPos2, facing, BeamSpawnFlags.None, NodeRef, _scene);
                 _shotCount--;
@@ -195,7 +207,7 @@ namespace MphRead.Entities.Enemies
         private bool Behavior00()
         {
             bool collided = HandleCollision();
-            if (!SeekTargetFacing(_targetVec, Vector3.UnitY, ref _aimSteps, _aimAngleStep) || !collided)
+            if (!SeekTargetFacing(_targetVec, UpVector, ref _aimSteps, _aimAngleStep) || !collided)
             {
                 return false;
             }

@@ -11,6 +11,8 @@ namespace MphRead.Entities
     {
         public PlayerEntity Owner { get; }
         private EntityBase? _target = null;
+        public EntityBase? Target => _target;
+        public NodeData3? ClosestNode { get; set; } = null;
 
         private int _health = 0;
         private ushort _timeSinceDamage = UInt16.MaxValue;
@@ -97,7 +99,7 @@ namespace MphRead.Entities
         public void OnTakeDamage(EntityBase attacker, uint damage)
         {
             _target = attacker;
-            _cooldownTimer = 30 * 2; // todo: FPS stuff
+            _targetTimer = 30 * 2; // todo: FPS stuff
             _cooldownFactor -= 61 * damage;
             if (_cooldownFactor < 0.7f)
             {
@@ -178,15 +180,9 @@ namespace MphRead.Entities
                 if (_target == null)
                 {
                     float minDistSqr = 15 * 15;
-                    for (int i = 0; i < _scene.Entities.Count; i++)
+                    foreach (PlayerEntity player in _scene.GetPlayerEntities())
                     {
-                        EntityBase entity = _scene.Entities[i];
-                        if (entity.Type != EntityType.Player || entity == Owner)
-                        {
-                            continue;
-                        }
-                        var player = (PlayerEntity)entity;
-                        if (player.Health == 0 || player.TeamIndex == Owner.TeamIndex || player.CurAlpha < 6 / 31f)
+                        if (player == Owner || player.Health == 0 || player.TeamIndex == Owner.TeamIndex || player.CurAlpha < 6 / 31f)
                         {
                             continue;
                         }
@@ -202,10 +198,25 @@ namespace MphRead.Entities
                 if (_target != null)
                 {
                     Vector3 muzzlePos = Position.AddY(0.4f);
-                    // todo: if 1P bot and encounter state, update _cooldownTimer differently
-                    // else...
+                    int encounter = GameState.EncounterState[Owner.SlotIndex];
+                    if (Owner.IsBot && GameState.SinglePlayer
+                        && (encounter == 1 || encounter == 3 || encounter == 4))
+                    {
+                        if (_cooldownTimer > 0)
+                        {
+                            _cooldownTimer--;
+                        }
+                        else
+                        {
+                            _cooldownTimer = 65 * 2; // todo: FPS stuff
+                        }
+
+                    }
+                    else
+                    {
+                        _cooldownTimer = 1; // not being used
+                    }
                     UpdateAim(muzzlePos, _target.Position, EquipInfo, out _aimVector);
-                    _cooldownTimer = 1;
                     float cooldown = EquipInfo.Weapon.ShotCooldown * _cooldownFactor;
                     if (cooldown < 7.5f)
                     {
@@ -213,7 +224,18 @@ namespace MphRead.Entities
                     }
                     if (Owner.TimeSinceShot >= cooldown * 2 && _cooldownTimer < 60 * 2) // todo: FPS stuff
                     {
-                        // todo: if 1P bot and encounter state, change some weapon values
+                        if (Owner.IsBot && GameState.SinglePlayer
+                            && (encounter == 1 || encounter == 3 || encounter == 4))
+                        {
+                            // no need to set infinite ammo since we don't have an ammo getter/setter
+                            EquipInfo.UnchargedDamage = 3;
+                            EquipInfo.HeadshotDamage = 3;
+                            EquipInfo.SplashDamage = 3;
+                            EquipInfo.MinChargeSplashDamage = 3;
+                            EquipInfo.ChargedSplashDamage = 3;
+                            EquipInfo.DmgDirTypes[0] = 0;
+                            EquipInfo.DmgDirTypes[1] = 0;
+                        }
                         BeamSpawnFlags flags = Owner.DoubleDamage ? BeamSpawnFlags.DoubleDamage : BeamSpawnFlags.None;
                         BeamResultFlags result = BeamProjectileEntity.Spawn(this, EquipInfo, muzzlePos, _aimVector, flags, NodeRef, _scene);
                         if (result != BeamResultFlags.NoSpawn)
@@ -263,6 +285,7 @@ namespace MphRead.Entities
                 }
                 UpdateLightSources(Position);
                 NodeRef = _scene.UpdateNodeRef(NodeRef, prevPos, Position);
+                ClosestNode = null;
             }
             // todo?: wifi stuff
             Debug.Assert(_scene.Room != null);

@@ -98,24 +98,24 @@ namespace MphRead
                 "Samus", "Kanden", "Spire", "Trace", "Noxus", "Sylux", "Weavel", "Guardian"
             };
             int modeId = 0;
-            var modeOpts = new Dictionary<string, string>()
-            {
-                { "adventure", "Adventure" },
-                { "story", "Adventure" },
-                { "1p", "Adventure" },
-                { "battle", "Battle" },
-                { "battleteams", "Battle Teams" },
-                { "survival", "Survival" },
-                { "survivalteams", "Survival Teams" },
-                { "capture", "Capture" },
-                { "bounty", "Bounty" },
-                { "bountyteams", "Bounty Teams" },
-                { "nodes", "Nodes" },
-                { "nodesteams", "Nodes Teams" },
-                { "defender", "Defender" },
-                { "defenderteams", "Defender Teams" },
-                { "primehunter", "Prime Hunter" },
-            };
+            var modeOpts = Frozen.Create<string, string>(
+            [
+                new("adventure", "Adventure"),
+                new("story", "Adventure"),
+                new("1p", "Adventure"),
+                new("battle", "Battle"),
+                new("battleteams", "Battle Teams"),
+                new("survival", "Survival"),
+                new("survivalteams", "Survival Teams"),
+                new("capture", "Capture"),
+                new("bounty", "Bounty"),
+                new("bountyteams", "Bounty Teams"),
+                new("nodes", "Nodes"),
+                new("nodesteams", "Nodes Teams"),
+                new("defender", "Defender"),
+                new("defenderteams", "Defender Teams"),
+                new("primehunter", "Prime Hunter")
+            ]);
             var modes = new List<string>()
             {
                 "auto-select", "Adventure", "Battle", "Battle Teams", "Survival", "Survival Teams", "Capture",
@@ -129,22 +129,22 @@ namespace MphRead
             var mphVersions = new List<string>() { Ver.A76E0, Ver.AMHE0, Ver.AMHE1,
                 Ver.AMHP0, Ver.AMHP1, Ver.AMHJ0, Ver.AMHJ1, Ver.AMHK0 };
             var fhVersions = new List<string>() { Ver.AMFE0, Ver.AMFP0 };
-            var mphInfo = new Dictionary<string, string>()
-            {
-                { Ver.A76E0, "Kiosk demo" },
-                { Ver.AMHE0, "USA rev 0" },
-                { Ver.AMHE1, "USA rev 1" },
-                { Ver.AMHP0, "EUR rev 0" },
-                { Ver.AMHP1, "EUR rev 1" },
-                { Ver.AMHJ0, "JPN rev 0" },
-                { Ver.AMHJ1, "JPN rev 1" },
-                { Ver.AMHK0, "KOR rev 0" }
-            };
-            var fhInfo = new Dictionary<string, string>()
-            {
-                { Ver.AMFE0, "USA rev 0" },
-                { Ver.AMFP0, "EUR rev 0" }
-            };
+            var mphInfo = Frozen.Create<string, string>(
+            [
+                new(Ver.A76E0, "Kiosk demo"),
+                new(Ver.AMHE0, "USA rev 0"),
+                new(Ver.AMHE1, "USA rev 1"),
+                new(Ver.AMHP0, "EUR rev 0"),
+                new(Ver.AMHP1, "EUR rev 1"),
+                new(Ver.AMHJ0, "JPN rev 0"),
+                new(Ver.AMHJ1, "JPN rev 1"),
+                new(Ver.AMHK0, "KOR rev 0")
+            ]);
+            var fhInfo = Frozen.Create<string, string>(
+            [
+                new(Ver.AMFE0, "USA rev 0"),
+                new(Ver.AMFP0, "EUR rev 0")
+            ]);
             MenuSettings menuSettings = GameState.LoadSettings();
             LoadSettings(menuSettings);
             UpdateSettings();
@@ -1696,11 +1696,13 @@ namespace MphRead
                     Console.WriteLine($"{X(s++)} (C) Reticle Opacity: {PrintOpacity(Features.ReticleOpacity)}");
                     Console.WriteLine($"{X(s++)} (S) HUD Sway: {OnOff(Features.HudSway)}");
                     Console.WriteLine($"{X(s++)} (F) Target Info Sway: {OnOff(Features.TargetInfoSway)}");
+                    Console.WriteLine($"{X(s++)} (W) Delayed Idle Sway: {OnOff(Features.DelayedIdleSway)}");
+                    Console.WriteLine($"{X(s++)} (N) No Idle Sway: {OnOff(Features.NoIdleSway)}");
                     Console.WriteLine($"{X(s++)} (R) Maximum Room Detail: {OnOff(Features.MaxRoomDetail)}");
                     Console.WriteLine($"{X(s++)} (P) Maximum Player Detail: {OnOff(Features.MaxPlayerDetail)}");
                     Console.WriteLine($"{X(s++)} (L) Logarithmic Spatial Audio: {OnOff(Features.LogSpatialAudio)}");
                     Console.WriteLine($"{X(s++)} (A) Consistent Alarm Interval: {OnOff(Features.HalfSecondAlarm)}");
-                    Console.WriteLine($"{X(s++)} (B) Full Boost Charge: {OnOff(Features.FullBoostCharge)}");
+                    Console.WriteLine($"{X(s++)} (G) Full Boost Charge: {OnOff(Features.FullBoostCharge)}");
                     Console.WriteLine($"{X(s++)} (1) Update Adventure Mode For Other Hunters: {OnOff(Features.AlternateHunters1P)}");
                 }
                 else if (screen == 2)
@@ -1712,6 +1714,7 @@ namespace MphRead
                     Console.WriteLine($"{X(s++)} (E) No Random Encounters: {OnOff(Cheats.NoRandomEncounters)}");
                     Console.WriteLine($"{X(s++)} (D) All Doors Unlocked: {OnOff(Cheats.UnlockAllDoors)}");
                     Console.WriteLine($"{X(s++)} (R) Retry From Current Room: {OnOff(Cheats.ContinueFromCurrentRoom)}");
+                    Console.WriteLine($"{X(s++)} (I) Skip Planet Intros: {OnOff(Cheats.SkipPlanetIntros)}");
                     Console.WriteLine($"{X(s++)} (U) Start With All Upgrades: {OnOff(Cheats.StartWithAllUpgrades)}");
                     Console.WriteLine($"{X(s++)} (O) Start With All Octoliths: {OnOff(Cheats.StartWithAllOctoliths)}");
                     Console.WriteLine($"{X(s++)} (G) Walk Through Walls: {OnOff(Cheats.WalkThroughWalls)}");
@@ -1830,29 +1833,37 @@ namespace MphRead
                     {
                         selection = 8;
                     }
-                    else if (keyInfo.Key == ConsoleKey.R)
+                    else if (keyInfo.Key == ConsoleKey.W)
                     {
                         selection = 9;
                     }
-                    else if (keyInfo.Key == ConsoleKey.P)
+                    else if (keyInfo.Key == ConsoleKey.N)
                     {
                         selection = 10;
                     }
-                    else if (keyInfo.Key == ConsoleKey.L)
+                    else if (keyInfo.Key == ConsoleKey.R)
                     {
                         selection = 11;
                     }
-                    else if (keyInfo.Key == ConsoleKey.A)
+                    else if (keyInfo.Key == ConsoleKey.P)
                     {
                         selection = 12;
                     }
-                    else if (keyInfo.Key == ConsoleKey.B)
+                    else if (keyInfo.Key == ConsoleKey.L)
                     {
                         selection = 13;
                     }
-                    else if (keyInfo.Key == ConsoleKey.D1 || keyInfo.Key == ConsoleKey.NumPad1)
+                    else if (keyInfo.Key == ConsoleKey.A)
                     {
                         selection = 14;
+                    }
+                    else if (keyInfo.Key == ConsoleKey.G)
+                    {
+                        selection = 15;
+                    }
+                    else if (keyInfo.Key == ConsoleKey.D1 || keyInfo.Key == ConsoleKey.NumPad1)
+                    {
+                        selection = 16;
                     }
                     else if (keyInfo.Key == ConsoleKey.Backspace || keyInfo.Key == ConsoleKey.Delete)
                     {
@@ -1894,25 +1905,33 @@ namespace MphRead
                         }
                         else if (selection == 9)
                         {
-                            Features.MaxRoomDetail = false;
+                            Features.DelayedIdleSway = true;
                         }
                         else if (selection == 10)
                         {
-                            Features.MaxPlayerDetail = true;
+                            Features.NoIdleSway = false;
                         }
                         else if (selection == 11)
                         {
-                            Features.LogSpatialAudio = false;
+                            Features.MaxRoomDetail = false;
                         }
                         else if (selection == 12)
                         {
-                            Features.HalfSecondAlarm = false;
+                            Features.MaxPlayerDetail = true;
                         }
                         else if (selection == 13)
                         {
-                            Features.FullBoostCharge = false;
+                            Features.LogSpatialAudio = false;
                         }
                         else if (selection == 14)
+                        {
+                            Features.HalfSecondAlarm = false;
+                        }
+                        else if (selection == 15)
+                        {
+                            Features.FullBoostCharge = false;
+                        }
+                        else if (selection == 16)
                         {
                             Features.AlternateHunters1P = true;
                         }
@@ -1997,25 +2016,33 @@ namespace MphRead
                         }
                         else if (selection == 9)
                         {
-                            Features.MaxRoomDetail = !Features.MaxRoomDetail;
+                            Features.DelayedIdleSway = !Features.DelayedIdleSway;
                         }
                         else if (selection == 10)
                         {
-                            Features.MaxPlayerDetail = !Features.MaxPlayerDetail;
+                            Features.NoIdleSway = !Features.NoIdleSway;
                         }
                         else if (selection == 11)
                         {
-                            Features.LogSpatialAudio = !Features.LogSpatialAudio;
+                            Features.MaxRoomDetail = !Features.MaxRoomDetail;
                         }
                         else if (selection == 12)
                         {
-                            Features.HalfSecondAlarm = !Features.HalfSecondAlarm;
+                            Features.MaxPlayerDetail = !Features.MaxPlayerDetail;
                         }
                         else if (selection == 13)
                         {
-                            Features.FullBoostCharge = !Features.FullBoostCharge;
+                            Features.LogSpatialAudio = !Features.LogSpatialAudio;
                         }
                         else if (selection == 14)
+                        {
+                            Features.HalfSecondAlarm = !Features.HalfSecondAlarm;
+                        }
+                        else if (selection == 15)
+                        {
+                            Features.FullBoostCharge = !Features.FullBoostCharge;
+                        }
+                        else if (selection == 16)
                         {
                             Features.AlternateHunters1P = !Features.AlternateHunters1P;
                         }
@@ -2049,25 +2076,29 @@ namespace MphRead
                     {
                         selection = 4;
                     }
-                    else if (keyInfo.Key == ConsoleKey.U)
+                    else if (keyInfo.Key == ConsoleKey.I)
                     {
                         selection = 5;
                     }
-                    else if (keyInfo.Key == ConsoleKey.O)
+                    else if (keyInfo.Key == ConsoleKey.U)
                     {
                         selection = 6;
                     }
-                    else if (keyInfo.Key == ConsoleKey.G)
+                    else if (keyInfo.Key == ConsoleKey.O)
                     {
                         selection = 7;
                     }
-                    else if (keyInfo.Key == ConsoleKey.D2 || keyInfo.Key == ConsoleKey.NumPad2)
+                    else if (keyInfo.Key == ConsoleKey.G)
                     {
                         selection = 8;
                     }
-                    else if (keyInfo.Key == ConsoleKey.Q)
+                    else if (keyInfo.Key == ConsoleKey.D2 || keyInfo.Key == ConsoleKey.NumPad2)
                     {
                         selection = 9;
+                    }
+                    else if (keyInfo.Key == ConsoleKey.Q)
+                    {
+                        selection = 10;
                     }
                     else if (keyInfo.Key == ConsoleKey.Backspace || keyInfo.Key == ConsoleKey.Delete)
                     {
@@ -2093,21 +2124,25 @@ namespace MphRead
                         }
                         else if (selection == 5)
                         {
-                            Cheats.StartWithAllUpgrades = false;
+                            Cheats.SkipPlanetIntros = false;
                         }
                         else if (selection == 6)
                         {
-                            Cheats.StartWithAllOctoliths = false;
+                            Cheats.StartWithAllUpgrades = false;
                         }
                         else if (selection == 7)
                         {
-                            Cheats.WalkThroughWalls = false;
+                            Cheats.StartWithAllOctoliths = false;
                         }
                         else if (selection == 8)
                         {
-                            Cheats.AlwaysFightGorea2 = false;
+                            Cheats.WalkThroughWalls = false;
                         }
                         else if (selection == 9)
+                        {
+                            Cheats.AlwaysFightGorea2 = false;
+                        }
+                        else if (selection == 10)
                         {
                             Cheats.QuadrupleDamage = false;
                         }
@@ -2140,21 +2175,25 @@ namespace MphRead
                         }
                         else if (selection == 5)
                         {
-                            Cheats.StartWithAllUpgrades = !Cheats.StartWithAllUpgrades;
+                            Cheats.SkipPlanetIntros = !Cheats.SkipPlanetIntros;
                         }
                         else if (selection == 6)
                         {
-                            Cheats.StartWithAllOctoliths = !Cheats.StartWithAllOctoliths;
+                            Cheats.StartWithAllUpgrades = !Cheats.StartWithAllUpgrades;
                         }
                         else if (selection == 7)
                         {
-                            Cheats.WalkThroughWalls = !Cheats.WalkThroughWalls;
+                            Cheats.StartWithAllOctoliths = !Cheats.StartWithAllOctoliths;
                         }
                         else if (selection == 8)
                         {
-                            Cheats.AlwaysFightGorea2 = !Cheats.AlwaysFightGorea2;
+                            Cheats.WalkThroughWalls = !Cheats.WalkThroughWalls;
                         }
                         else if (selection == 9)
+                        {
+                            Cheats.AlwaysFightGorea2 = !Cheats.AlwaysFightGorea2;
+                        }
+                        else if (selection == 10)
                         {
                             Cheats.QuadrupleDamage = !Cheats.QuadrupleDamage;
                         }
@@ -2266,6 +2305,8 @@ namespace MphRead
             Features.ReticleOpacity = 1;
             Features.HudSway = true;
             Features.TargetInfoSway = false;
+            Features.DelayedIdleSway = true;
+            Features.NoIdleSway = false;
             Features.MaxRoomDetail = false;
             Features.MaxPlayerDetail = true;
             Features.LogSpatialAudio = false;
@@ -2277,6 +2318,7 @@ namespace MphRead
             Cheats.NoRandomEncounters = false;
             Cheats.UnlockAllDoors = false;
             Cheats.ContinueFromCurrentRoom = false;
+            Cheats.SkipPlanetIntros = false;
             Cheats.StartWithAllUpgrades = false;
             Cheats.StartWithAllOctoliths = false;
             Cheats.WalkThroughWalls = false;

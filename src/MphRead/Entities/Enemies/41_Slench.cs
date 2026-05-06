@@ -913,14 +913,8 @@ namespace MphRead.Entities.Enemies
                 {
                     return true;
                 }
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (DoorEntity door in _scene.GetDoorEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type != EntityType.Door)
-                    {
-                        continue;
-                    }
-                    var door = (DoorEntity)entity;
                     if (door.Flags.TestFlag(DoorFlags.Open))
                     {
                         continue;

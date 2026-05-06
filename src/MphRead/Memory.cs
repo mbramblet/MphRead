@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -11,9 +12,81 @@ namespace MphRead.Memory
 {
     public class Memory
     {
+        private List<string> _mem = [];
+
         private void DoProcess()
         {
-            _sb.AppendLine("processed");
+            uint count = _players[1].AggroCount;
+            var list = _players[1].AIAggro;
+            Debug.Assert(list != null);
+            for (int i = 0; i < list.Length; i++)
+            {
+                list[i].UpdateSlots(_players);
+            }
+            _ = 5;
+        }
+
+        private void PrintAiContext()
+        {
+            var context = _players[1].AIContext;
+            Debug.Assert(context != null);
+            string tree = "";
+            for (int i = 1; i < 20; i++)
+            {
+                AIContext item = context[i];
+                if (item.AIData1 == null)
+                {
+                    break;
+                }
+                AIContext parent = context[i - 1];
+                int childIndex = -1;
+                for (int j = 0; j < parent.AIData1!.Data1Count; j++)
+                {
+                    if (parent.AIData1.Data1![j].Address == item.AIData1.Address)
+                    {
+                        childIndex = j;
+                        break;
+                    }
+                }
+                tree += $"{(tree == "" ? "" : " -> ")}{childIndex}";
+                _sb.AppendLine($"d{i}: {childIndex}");
+                if (parent.AIData1?.Data1Count > 1)
+                {
+                    for (int k = 0; k < item.AIData1.Data2Count; k++)
+                    {
+                        int index = item.AIData1.Data2![k].Data1SelectIdx;
+                        string target;
+                        if (index >= 20)
+                        {
+                            index = parent.AIData1.Data1Count;
+                            target = "reset";
+                        }
+                        else
+                        {
+                            target = index.ToString();
+                        }
+                        int weight = parent.Weights[index];
+                        float pct = weight / 100000f * 100;
+                        _sb.AppendLine($"w: {weight,6} / 100000 ({pct,5:f1}%) -> {target}");
+                    }
+                }
+                if (item.AIData1.Data1Count == 0)
+                {
+                    break;
+                }
+                _sb.AppendLine();
+                _ = 5;
+            }
+            int frameCount = BitConverter.ToInt32(_buffer, Addresses.FrameCount - 0x2000000);
+            if (_mem.Count == 0 || _mem.Last().Split(": ")[1] != tree)
+            {
+                _mem.Add($"{frameCount}: {tree}");
+            }
+            _sb.AppendLine();
+            foreach (string line in _mem)
+            {
+                _sb.AppendLine(line);
+            }
         }
 
         private class AddressInfo
@@ -64,9 +137,9 @@ namespace MphRead.Memory
 
         private static AddressInfo Addresses { get; set; } = null!;
 
-        private static readonly IReadOnlyDictionary<string, AddressInfo> AllAddresses = new Dictionary<string, AddressInfo>()
-        {
-            ["a76e"] = new AddressInfo(
+        private static readonly FrozenDictionary<string, AddressInfo> AllAddresses = Frozen.Create<string, AddressInfo>(
+        [
+            new("a76e", new AddressInfo(
                 gameState: 0x20BC420, // todo: class
                 entityListHead: 0x20B85F8,
                 frameCount: 0x20AE514,
@@ -82,8 +155,8 @@ namespace MphRead.Memory
                     license: 0x20EB948, // todo
                     friends: 0x20ECEE0 // todo
                 )
-            ),
-            ["amhp1"] = new AddressInfo(
+            )),
+            new("amhp1", new AddressInfo(
                 gameState: 0x20E845C,
                 entityListHead: 0x20E3EE0,
                 frameCount: 0x20D94FC,
@@ -99,8 +172,8 @@ namespace MphRead.Memory
                     license: 0x20EB948,
                     friends: 0x20ECEE0
                 )
-            )
-        };
+            ))
+        ]);
 
         public struct SystemInfo
         {

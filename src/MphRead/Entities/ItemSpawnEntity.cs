@@ -1,3 +1,4 @@
+using MphRead.Formats;
 using MphRead.Formats.Culling;
 using OpenTK.Mathematics;
 
@@ -18,6 +19,7 @@ namespace MphRead.Entities
         public new bool Active { get; set; }
         public bool AlwaysActive { get; set; }
         public ItemInstanceEntity? Item { get; set; }
+        public NodeData3? ClosestNode { get; set; } = null;
 
         // used if there is no base model
         protected override Vector4? OverrideColor { get; } = new ColorRgb(0xC8, 0x00, 0xC8).AsVector4();
@@ -29,7 +31,7 @@ namespace MphRead.Entities
             Id = data.Header.EntityId;
             Position = data.Header.Position.ToFloatVector(); // vecs from header are not used
             AlwaysActive = data.AlwaysActive != 0;
-            if (_scene.GameMode == GameMode.SinglePlayer)
+            if (GameState.Mode == GameMode.SinglePlayer)
             {
                 int state = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Enabled != 0);
                 if (AlwaysActive)
@@ -127,7 +129,7 @@ namespace MphRead.Entities
             {
                 Active = true;
                 _playKeySfx = true;
-                if (_scene.GameMode == GameMode.SinglePlayer)
+                if (GameState.Mode == GameMode.SinglePlayer)
                 {
                     GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                 }
@@ -135,7 +137,7 @@ namespace MphRead.Entities
             else if (info.Message == Message.SetActive && (int)info.Param1 == 0)
             {
                 Active = false;
-                if (_scene.GameMode == GameMode.SinglePlayer)
+                if (GameState.Mode == GameMode.SinglePlayer)
                 {
                     GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                 }
@@ -149,14 +151,8 @@ namespace MphRead.Entities
             {
                 if (info.Sender.Type == EntityType.EnemySpawn && ((EnemySpawnEntity)info.Sender).Data.EnemyType == EnemyType.Hunter)
                 {
-                    for (int i = 0; i < _scene.Entities.Count; i++)
+                    foreach (PlayerEntity player in _scene.GetPlayerEntities())
                     {
-                        EntityBase entity = _scene.Entities[i];
-                        if (entity.Type != EntityType.Player)
-                        {
-                            continue;
-                        }
-                        var player = (PlayerEntity)entity;
                         if (player.EnemySpawner == info.Sender)
                         {
                             player.GetPosition(out Vector3 position);
@@ -217,7 +213,7 @@ namespace MphRead.Entities
 
         protected override Vector4? OverrideColor { get; } = new ColorRgb(0xC8, 0x00, 0xC8).AsVector4();
 
-        public FhItemSpawnEntity(FhItemSpawnEntityData data, Scene scene) : base(EntityType.ItemSpawn, scene)
+        public FhItemSpawnEntity(FhItemSpawnEntityData data, Scene scene) : base(EntityType.FhItemSpawn, scene)
         {
             _data = data;
             Id = data.Header.EntityId;

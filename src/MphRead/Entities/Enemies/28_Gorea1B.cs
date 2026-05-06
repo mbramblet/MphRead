@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using MphRead.Effects;
 using MphRead.Formats;
 using MphRead.Formats.Culling;
@@ -133,11 +134,9 @@ namespace MphRead.Entities.Enemies
         private void ActivateTrocraSpawns()
         {
             int count = _phasesLeft == 3 ? 1 : 2;
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (EnemySpawnEntity spawner in _scene.GetEnemySpawnEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type == EntityType.EnemySpawn && entity is EnemySpawnEntity spawner
-                    && spawner.Data.EnemyType == EnemyType.Trocra && !spawner.Flags.TestFlag(SpawnerFlags.Active))
+                if (spawner.Data.EnemyType == EnemyType.Trocra && !spawner.Flags.TestFlag(SpawnerFlags.Active))
                 {
                     _scene.SendMessage(Message.Activate, this, spawner, 0, 0);
                     if (_phasesLeft != 1 && --count == 0)
@@ -799,22 +798,25 @@ namespace MphRead.Entities.Enemies
             // but will settle for anything with Field186 == 0 if the second condition can't be satisfied
             if (firstDeadIndex >= 0)
             {
-                int i;
-                for (i = 0; i < _scene.Entities.Count; i++)
+                LinkedListNode<EntityBase>? node = _scene.Entities.FirstNode;
+                while (node != null)
                 {
-                    EntityBase entity = _scene.Entities[i];
+                    EntityBase entity = node.Value;
                     if (entity.Type == EntityType.EnemyInstance && entity is Enemy30Entity enemy && enemy.State == 0)
                     {
                         _trocra[firstDeadIndex] = enemy;
                         break;
                     }
+                    node = node.Next;
                 }
                 if (_trocra[firstDeadIndex] != null) // only true if just set above
                 {
                     // pick up where we left off in the list
-                    for (i = i + 1; i < _scene.Entities.Count; i++)
+                    Debug.Assert(node != null);
+                    node = node.Next;
+                    while (node != null)
                     {
-                        EntityBase entity = _scene.Entities[i];
+                        EntityBase entity = node.Value;
                         if (entity.Type == EntityType.EnemyInstance && entity is Enemy30Entity enemy && enemy.State == 0)
                         {
                             Vector3 between = enemy.Position - Position;
@@ -824,6 +826,7 @@ namespace MphRead.Entities.Enemies
                                 break;
                             }
                         }
+                        node = node.Next;
                     }
                     Enemy30Entity trocra = _trocra[firstDeadIndex]!;
                     trocra.Gorea1B = this;
@@ -1032,11 +1035,9 @@ namespace MphRead.Entities.Enemies
 
         private void DeactivateAllTrocraSpawns()
         {
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (EnemySpawnEntity spawner in _scene.GetEnemySpawnEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type == EntityType.EnemySpawn && entity is EnemySpawnEntity spawner
-                    && spawner.Data.EnemyType == EnemyType.Trocra)
+                if (spawner.Data.EnemyType == EnemyType.Trocra)
                 {
                     _scene.SendMessage(Message.SetActive, this, spawner, 0, 0);
                 }
@@ -1045,10 +1046,9 @@ namespace MphRead.Entities.Enemies
 
         private void DestroyAllTrocras()
         {
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (EnemyInstanceEntity enemy in _scene.GetEnemyInstanceEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type == EntityType.EnemyInstance && entity is Enemy30Entity trocra)
+                if (enemy is Enemy30Entity trocra)
                 {
                     trocra.Explode();
                 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -37,6 +38,10 @@ namespace MphRead
 
     public static class GameState
     {
+        public static GameMode Mode { get; set; } = GameMode.SinglePlayer;
+        public static bool SinglePlayer => Mode == GameMode.SinglePlayer;
+        public static bool Multiplayer => Mode != GameMode.SinglePlayer;
+        public static bool IsOctolithMode => Mode == GameMode.Capture || Mode == GameMode.Bounty || Mode == GameMode.BountyTeams;
         public static bool MenuPause { get; private set; }
         public static bool DialogPause { get; private set; }
         public static MatchState MatchState { get; set; } = MatchState.InProgress;
@@ -45,6 +50,8 @@ namespace MphRead
         public static EscapeState EscapeState { get; set; } = EscapeState.None;
         public static float EscapeTimer { get; set; } = -1;
         public static bool EscapePaused { get; set; }
+        public static int[] EncounterState { get; } = new int[4];
+        public static bool[] CompletedRandomEncounterRooms { get; } = new bool[66]; // only for the no repeat encounters feature
         public static int TransitionRoomId { get; set; } = -1;
         public static bool TransitionAltForm { get; set; }
         public static int ActivePlayers { get; set; } = 0;
@@ -151,9 +158,8 @@ namespace MphRead
 
         public static void Setup(Scene scene)
         {
-            GameMode mode = scene.GameMode;
-            if (mode == GameMode.BattleTeams || mode == GameMode.SurvivalTeams || mode == GameMode.Capture
-                || mode == GameMode.BountyTeams || mode == GameMode.NodesTeams || mode == GameMode.DefenderTeams)
+            if (Mode == GameMode.BattleTeams || Mode == GameMode.SurvivalTeams || Mode == GameMode.Capture
+                || Mode == GameMode.BountyTeams || Mode == GameMode.NodesTeams || Mode == GameMode.DefenderTeams)
             {
                 Teams = true;
                 for (int i = 0; i < 4; i++)
@@ -168,43 +174,43 @@ namespace MphRead
                 }
             }
             ModeState = ModeStateAdventure;
-            if (mode == GameMode.Battle || mode == GameMode.BattleTeams)
+            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams)
             {
                 PointGoal = 7;
                 MatchTime = 7 * 60;
                 ModeState = ModeStateBattle;
             }
-            else if (mode == GameMode.Survival || mode == GameMode.SurvivalTeams)
+            else if (Mode == GameMode.Survival || Mode == GameMode.SurvivalTeams)
             {
                 PointGoal = 2; // spare lives
                 MatchTime = 15 * 60;
                 ModeState = ModeStateSurvival;
             }
-            else if (mode == GameMode.Bounty || mode == GameMode.BountyTeams)
+            else if (Mode == GameMode.Bounty || Mode == GameMode.BountyTeams)
             {
                 PointGoal = 3;
                 MatchTime = 15 * 60;
                 ModeState = ModeStateBounty;
             }
-            else if (mode == GameMode.Capture)
+            else if (Mode == GameMode.Capture)
             {
                 PointGoal = 5;
                 MatchTime = 15 * 60;
                 ModeState = ModeStateCapture;
             }
-            else if (mode == GameMode.Defender || mode == GameMode.DefenderTeams)
+            else if (Mode == GameMode.Defender || Mode == GameMode.DefenderTeams)
             {
                 TimeGoal = 1.5f * 60;
                 MatchTime = 15 * 60;
                 ModeState = ModeStateDefender;
             }
-            else if (mode == GameMode.Nodes || mode == GameMode.NodesTeams)
+            else if (Mode == GameMode.Nodes || Mode == GameMode.NodesTeams)
             {
                 PointGoal = 70;
                 MatchTime = 15 * 60;
                 ModeState = ModeStateNodes;
             }
-            else if (mode == GameMode.PrimeHunter)
+            else if (Mode == GameMode.PrimeHunter)
             {
                 TimeGoal = 1.5f * 60;
                 MatchTime = 15 * 60;
@@ -243,7 +249,7 @@ namespace MphRead
 
         public static void ProcessFrame(Scene scene)
         {
-            if (scene.Multiplayer && CameraSequence.Current?.IsIntro == true)
+            if (Multiplayer && CameraSequence.Current?.IsIntro == true)
             {
                 Debug.Assert(CameraSequence.Current.CamInfoRef == PlayerEntity.Main.CameraInfo);
                 CameraSequence.Current.Process();
@@ -261,7 +267,7 @@ namespace MphRead
                     }
                 }
                 // todo: update MP playtime to license info
-                if (scene.Multiplayer && !Features.AllowInvalidTeams)
+                if (Multiplayer && !Features.AllowInvalidTeams)
                 {
                     bool invalid = PlayerEntity.MaxPlayers < 2;
                     if (!invalid && Teams)
@@ -285,7 +291,7 @@ namespace MphRead
                     }
                 }
                 ModeState(scene);
-                if (!scene.Multiplayer && EscapeTimer != -1)
+                if (SinglePlayer && EscapeTimer != -1)
                 {
                     // bugfix?: this fade check seems to count things like the Omega Cannon flash
                     if (!EscapePaused && !MenuPause && !DialogPause && scene.FadeType == FadeType.None
@@ -313,7 +319,7 @@ namespace MphRead
                 if (MatchTime != 0 && !ForceEndGame)
                 {
                     // mustodo: update music
-                    if (scene.Multiplayer)
+                    if (Multiplayer)
                     {
                         var time = TimeSpan.FromSeconds(MatchTime);
                         if (time.TotalMinutes < 1 && time.Seconds <= 9)
@@ -347,7 +353,7 @@ namespace MphRead
                 else
                 {
                     PlayerEntity.Main.HudEndDisrupted();
-                    if ((scene.GameMode == GameMode.Survival || scene.GameMode == GameMode.SurvivalTeams) && !ForceEndGame)
+                    if ((Mode == GameMode.Survival || Mode == GameMode.SurvivalTeams) && !ForceEndGame)
                     {
                         for (int i = 0; i < 4; i++)
                         {
@@ -361,7 +367,7 @@ namespace MphRead
                                 TeamTime[player.TeamIndex] = -1;
                             }
                         }
-                        UpdateState(scene);
+                        UpdateState();
                     }
                     // todo: 1P time up? isn't that handled by death countdown etc.?
                     MatchState = MatchState.GameOver;
@@ -391,7 +397,7 @@ namespace MphRead
                 }
                 else
                 {
-                    EnsureIntroCamSeq(scene);
+                    EnsureIntroCamSeq();
                 }
                 if (MatchTime == 0)
                 {
@@ -402,7 +408,7 @@ namespace MphRead
             }
             else if (MatchState == MatchState.Ending)
             {
-                EnsureIntroCamSeq(scene);
+                EnsureIntroCamSeq();
                 // todo: more stuff?
                 if (MatchTime == 0)
                 {
@@ -412,9 +418,9 @@ namespace MphRead
             }
         }
 
-        private static void EnsureIntroCamSeq(Scene scene)
+        private static void EnsureIntroCamSeq()
         {
-            if (scene.Multiplayer && CameraSequence.Current == null && CameraSequence.Intro != null)
+            if (Multiplayer && CameraSequence.Current == null && CameraSequence.Intro != null)
             {
                 CameraSequence.Intro.SetUp(PlayerEntity.Main.CameraInfo, transitionTime: 0);
                 PlayerEntity.Main.CameraInfo.Update();
@@ -455,14 +461,10 @@ namespace MphRead
                         }
                         else
                         {
-                            for (int j = 0; j < scene.Entities.Count; j++)
+                            foreach (CamSeqEntity entity in scene.GetCamSeqEntities())
                             {
-                                EntityBase entity = scene.Entities[j];
-                                if (entity.Type == EntityType.CameraSequence)
-                                {
-                                    scene.SendMessage(Message.Activate, null!, entity, param1: 0, param2: 0);
-                                    break;
-                                }
+                                scene.SendMessage(Message.Activate, null!, entity, param1: 0, param2: 0);
+                                break;
                             }
                         }
                         break;
@@ -802,7 +804,7 @@ namespace MphRead
                 }
             }
             float countdown = PlayerEntity.Main.DeathCountdown;
-            if (!scene.Multiplayer && PlayerEntity.Main.Health == 0 && countdown > 0)
+            if (SinglePlayer && PlayerEntity.Main.Health == 0 && countdown > 0)
             {
                 if (countdown >= 145 / 30f)
                 {
@@ -952,13 +954,12 @@ namespace MphRead
             // mustodo: update tempo and/or switch tracks
         }
 
-        public static void UpdateState(Scene scene)
+        public static void UpdateState()
         {
             if (PlayerEntity.PlayerCount == 0)
             {
                 return;
             }
-            GameMode mode = scene.GameMode;
             IReadOnlyList<PlayerEntity> players = PlayerEntity.Players;
             int[] prevTeamPoints = new int[4];
             int[] prevTeamDeaths = new int[4];
@@ -969,7 +970,7 @@ namespace MphRead
                 TeamPoints[i] = 0;
                 TeamDeaths[i] = 0;
                 TeamKills[i] = 0;
-                if (mode == GameMode.Survival || mode == GameMode.SurvivalTeams)
+                if (Mode == GameMode.Survival || Mode == GameMode.SurvivalTeams)
                 {
                     TeamTime[i] = 0;
                 }
@@ -977,27 +978,27 @@ namespace MphRead
             for (int i = 0; i < 4; i++)
             {
                 PlayerEntity player = players[i];
-                if (!player.LoadFlags.TestFlag(LoadFlags.Initial))
+                if (!player.LoadFlags.TestFlag(LoadFlags.Initial) || player.TeamIndex == -1)
                 {
                     continue;
                 }
                 TeamPoints[player.TeamIndex] += Points[i];
                 TeamDeaths[player.TeamIndex] += Deaths[i];
                 TeamKills[player.TeamIndex] += Kills[i];
-                if (mode == GameMode.Survival || mode == GameMode.SurvivalTeams)
+                if (Mode == GameMode.Survival || Mode == GameMode.SurvivalTeams)
                 {
                     if (TeamTime[player.TeamIndex] < Time[i])
                     {
                         TeamTime[player.TeamIndex] = Time[i];
                     }
                 }
-                else if (mode == GameMode.Defender || mode == GameMode.DefenderTeams)
+                else if (Mode == GameMode.Defender || Mode == GameMode.DefenderTeams)
                 {
                     Time[i] = TeamTime[player.TeamIndex];
                 }
             }
-            if (mode == GameMode.Battle || mode == GameMode.BattleTeams || mode == GameMode.Capture || mode == GameMode.Bounty
-                || mode == GameMode.BountyTeams || mode == GameMode.Nodes || mode == GameMode.NodesTeams)
+            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams || Mode == GameMode.Capture || Mode == GameMode.Bounty
+                || Mode == GameMode.BountyTeams || Mode == GameMode.Nodes || Mode == GameMode.NodesTeams)
             {
                 int teamPoints = TeamPoints[PlayerEntity.Main.TeamIndex];
                 if (teamPoints != prevTeamPoints[PlayerEntity.Main.TeamIndex] && teamPoints == PointGoal - 1)
@@ -1005,7 +1006,7 @@ namespace MphRead
                     Sfx.QueueStream(VoiceId.VOICE_ONE_KILL_TO_WIN, delay: 1);
                 }
             }
-            else if (mode == GameMode.Survival || mode == GameMode.SurvivalTeams)
+            else if (Mode == GameMode.Survival || Mode == GameMode.SurvivalTeams)
             {
                 int opponents = 0;
                 int lastTeam = -1;
@@ -1081,8 +1082,8 @@ namespace MphRead
                     int teamIndex = players[slot].TeamIndex;
                     int nextTeamIndex = players[nextSlot].TeamIndex;
                     // the game passes team_ids[wslot/nslot] instead of the player fields to CompareTeams
-                    if (Teams && teamIndex != nextTeamIndex && CompareTeams(teamIndex, nextTeamIndex, mode) < 0
-                        || ComparePlayers(slot, nextSlot, mode) < 0)
+                    if (Teams && teamIndex != nextTeamIndex && CompareTeams(teamIndex, nextTeamIndex) < 0
+                        || ComparePlayers(slot, nextSlot) < 0)
                     {
                         ResultSlots[index] = nextSlot;
                         ResultSlots[nextIndex] = slot;
@@ -1092,7 +1093,7 @@ namespace MphRead
             if (Teams)
             {
                 int v47 = 0;
-                int v48 = CompareTeams(0, 1, mode);
+                int v48 = CompareTeams(0, 1);
                 int[] v57 = new int[2];
                 if (v48 <= 0)
                 {
@@ -1113,7 +1114,7 @@ namespace MphRead
                     TeamStandings[slot] = v47;
                     if (teamIndex != players[nextSlot].TeamIndex)
                     {
-                        if (ComparePlayers(slot, nextSlot, mode) != 0)
+                        if (ComparePlayers(slot, nextSlot) != 0)
                         {
                             v47++;
                         }
@@ -1135,7 +1136,7 @@ namespace MphRead
                 {
                     int slot = ResultSlots[index];
                     Standings[slot] = v47;
-                    if (ComparePlayers(slot, ResultSlots[index + 1], mode) != 0)
+                    if (ComparePlayers(slot, ResultSlots[index + 1]) != 0)
                     {
                         v47 = index + 1;
                     }
@@ -1145,13 +1146,13 @@ namespace MphRead
             // todo: update license info
         }
 
-        private static int ComparePlayers(int slot1, int slot2, GameMode mode)
+        private static int ComparePlayers(int slot1, int slot2)
         {
             int points1 = Points[slot1];
             int points2 = Points[slot2];
             float time1 = Time[slot1];
             float time2 = Time[slot2];
-            if (mode == GameMode.Survival || mode == GameMode.SurvivalTeams)
+            if (Mode == GameMode.Survival || Mode == GameMode.SurvivalTeams)
             {
                 if (time1 == -1)
                 {
@@ -1166,7 +1167,7 @@ namespace MphRead
             int deaths2 = Deaths[slot2];
             int kills1 = Kills[slot1];
             int kills2 = Kills[slot2];
-            if (mode == GameMode.Battle || mode == GameMode.BattleTeams)
+            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams)
             {
                 if (points1 == points2 && deaths1 == deaths2)
                 {
@@ -1178,7 +1179,7 @@ namespace MphRead
                 }
                 return 1;
             }
-            if (mode == GameMode.Survival || mode == GameMode.SurvivalTeams)
+            if (Mode == GameMode.Survival || Mode == GameMode.SurvivalTeams)
             {
                 if (time1 == time2 && deaths1 == deaths2)
                 {
@@ -1190,7 +1191,7 @@ namespace MphRead
                 }
                 return 1;
             }
-            if (mode == GameMode.Defender || mode == GameMode.DefenderTeams)
+            if (Mode == GameMode.Defender || Mode == GameMode.DefenderTeams)
             {
                 if (time1 == time2 && kills1 == kills2)
                 {
@@ -1202,8 +1203,8 @@ namespace MphRead
                 }
                 return 1;
             }
-            if (mode == GameMode.Capture || mode == GameMode.Nodes || mode == GameMode.NodesTeams
-                || mode == GameMode.Bounty || mode == GameMode.BountyTeams)
+            if (Mode == GameMode.Capture || Mode == GameMode.Nodes || Mode == GameMode.NodesTeams
+                || Mode == GameMode.Bounty || Mode == GameMode.BountyTeams)
             {
                 if (points1 == points2 && kills1 == kills2)
                 {
@@ -1215,7 +1216,7 @@ namespace MphRead
                 }
                 return 1;
             }
-            if (mode == GameMode.PrimeHunter)
+            if (Mode == GameMode.PrimeHunter)
             {
                 if (time1 == time2 && kills1 == kills2)
                 {
@@ -1230,13 +1231,13 @@ namespace MphRead
             return 0;
         }
 
-        private static int CompareTeams(int slot1, int slot2, GameMode mode)
+        private static int CompareTeams(int slot1, int slot2)
         {
             int points1 = TeamPoints[slot1];
             int points2 = TeamPoints[slot2];
             float time1 = TeamTime[slot1];
             float time2 = TeamTime[slot2];
-            if (mode == GameMode.Survival || mode == GameMode.SurvivalTeams)
+            if (Mode == GameMode.Survival || Mode == GameMode.SurvivalTeams)
             {
                 if (time1 == -1)
                 {
@@ -1251,7 +1252,7 @@ namespace MphRead
             int deaths2 = TeamDeaths[slot2];
             int kills1 = TeamKills[slot1];
             int kills2 = TeamKills[slot2];
-            if (mode == GameMode.BattleTeams)
+            if (Mode == GameMode.BattleTeams)
             {
                 if (points1 == points2 && deaths1 == deaths2)
                 {
@@ -1263,7 +1264,7 @@ namespace MphRead
                 }
                 return 1;
             }
-            if (mode == GameMode.SurvivalTeams)
+            if (Mode == GameMode.SurvivalTeams)
             {
                 if (time1 == time2 && deaths1 == deaths2)
                 {
@@ -1275,7 +1276,7 @@ namespace MphRead
                 }
                 return 1;
             }
-            if (mode == GameMode.DefenderTeams)
+            if (Mode == GameMode.DefenderTeams)
             {
                 if (time1 == time2 && kills1 == kills2)
                 {
@@ -1287,7 +1288,7 @@ namespace MphRead
                 }
                 return 1;
             }
-            if (mode == GameMode.Capture || mode == GameMode.NodesTeams || mode == GameMode.BattleTeams)
+            if (Mode == GameMode.Capture || Mode == GameMode.NodesTeams || Mode == GameMode.BattleTeams)
             {
                 if (points1 == points2 && kills1 == kills2)
                 {
@@ -1300,6 +1301,14 @@ namespace MphRead
                 return 1;
             }
             return 0;
+        }
+
+        public static void CompleteRandomEncounter(int roomId)
+        {
+            if (roomId >= 27 && roomId <= 92)
+            {
+                CompletedRandomEncounterRooms[roomId - 27] = true;
+            }
         }
 
         private static StorySave _cleanStorySave = null!;
@@ -1558,6 +1567,7 @@ namespace MphRead
         public byte[] VisitedRooms { get; init; } = new byte[9];
         public byte[] TriggerState { get; init; } = new byte[4];
         public byte[] Logbook { get; init; } = new byte[68];
+        public byte[][] EnemyEncounters { get; init; }
         public int ScanCount { get; set; }
         public int EquipmentCount { get; set; }
         public int CheckpointEntityId { get; set; } = -1;
@@ -1584,6 +1594,11 @@ namespace MphRead
             for (int i = 0; i < RoomState.Length; i++)
             {
                 RoomState[i] = new byte[60];
+            }
+            EnemyEncounters = new byte[8][];
+            for (int i = 0; i < EnemyEncounters.Length; i++)
+            {
+                EnemyEncounters[i] = new byte[8];
             }
             PlayerValues values = Metadata.PlayerValues[0];
             Health = HealthMax = values.EnergyTank - 1;
@@ -1857,6 +1872,11 @@ namespace MphRead
             {
                 byte[] source = RoomState[i];
                 Array.Copy(source, other.RoomState[i], source.Length);
+            }
+            for (int i = 0; i < EnemyEncounters.Length; i++)
+            {
+                byte[] source = EnemyEncounters[i];
+                Array.Copy(source, other.EnemyEncounters[i], source.Length);
             }
             VisitedRooms.CopyTo(other.VisitedRooms, index: 0);
             TriggerState.CopyTo(other.TriggerState, index: 0);

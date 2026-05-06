@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -28,6 +29,75 @@ namespace MphRead.Utility
             List<EntityEditorBase> entities = meta.FirstHunt ? GetFhEntities(meta.EntityPath) : GetEntities(meta.EntityPath, filter);
             List<EntityEditorBase> converted = ConvertMphToFh(entities);
             return RepackFhEntities(converted);
+        }
+
+        public static ReadOnlySpan<byte> RepackHook(string path, bool firstHunt)
+        {
+            bool hookEnabled = false;
+            ReadOnlySpan<byte> bytes = Read.ReadBytes(path, firstHunt);
+            if (!hookEnabled)
+            {
+                return bytes;
+            }
+            string[] split = path.Split(@"levels\entities\");
+            if (split.Length > 1)
+            {
+                string filename = $@"levels\entities\{split[^1]}";
+                if (filename == Metadata.RoomMetadata["UNIT2_LAND"].EntityPath)
+                {
+                    List<EntityEditorBase> entities = GetEntities(filename);
+                    short id = entities.Max(e => e.Id);
+                    var teleporter = new TeleporterEntityEditor()
+                    {
+                        Id = ++id,
+                        LayerMask = 7,
+                        Up = Vector3.UnitY,
+                        Facing = Vector3.UnitZ,
+                        Position = new Vector3(-19.889404f, 0, 0),
+                        NodeName = "rmMain",
+                        Active = true,
+                        ArtifactId = 8,
+                        LoadIndex = 88,
+                        TargetIndex = 88,
+                        TargetRoom = "unit2_RM3_Ent.b"
+                    };
+                    entities.Add(teleporter);
+                    return RepackEntities(entities);
+                }
+                if (filename == Metadata.RoomMetadata["UNIT2_RM3"].EntityPath)
+                {
+                    List<EntityEditorBase> entities = GetEntities(filename);
+                    short id = entities.Max(e => e.Id);
+                    var teleporter = new TeleporterEntityEditor()
+                    {
+                        Id = ++id,
+                        LayerMask = 7,
+                        Up = Vector3.UnitY,
+                        Facing = Vector3.UnitZ,
+                        Position = new Vector3(13.573242f, 2.576416f, -13.726074f),
+                        NodeName = "rmMain",
+                        Active = false,
+                        Invisible = true,
+                        ArtifactId = 8,
+                        LoadIndex = 88,
+                        TargetIndex = 88,
+                        TargetRoom = "unit2_Land_Ent."
+                    };
+                    entities.Add(teleporter);
+                    var trigger = (TriggerVolumeEntityEditor)entities.Single(e => e.Id == 25 && e.Type == EntityType.TriggerVolume);
+                    trigger.Volume = new CollisionVolume(trigger.Volume.BoxVector1, trigger.Volume.BoxVector2, trigger.Volume.BoxVector3,
+                        new Vector3(-4.866759f, -2.576416f, 3.890676f), trigger.Volume.BoxDot1, trigger.Volume.BoxDot2, trigger.Volume.BoxDot3);
+                    return RepackEntities(entities);
+                }
+                if (filename == Metadata.RoomMetadata["Gorea_b1"].EntityPath)
+                {
+                    List<EntityEditorBase> entities = GetEntities(filename);
+                    var spawn = (PlayerSpawnEntityEditor)entities.Single(e => e.Type == EntityType.PlayerSpawn);
+                    spawn.Position = new Vector3(0, -0.27163085f, -30.45435f);
+                    return RepackEntities(entities);
+                }
+            }
+            return bytes;
         }
 
         public static byte[] TestEntityEdit()
@@ -474,8 +544,8 @@ namespace MphRead.Utility
                         Position = enemySpawn.Position,
                         LinkedEntityId = -1,
                         SpawnCount = enemySpawn.SpawnCount,
-                        SpawnLimit = enemySpawn.SpawnLimit,
                         SpawnTotal = enemySpawn.SpawnTotal,
+                        SpawnLimit = enemySpawn.SpawnLimit,
                         SpawnNodeName = enemySpawn.SpawnNodeName,
                         SpawnerHealth = 0,
                         Up = enemySpawn.Up
@@ -1532,8 +1602,8 @@ namespace MphRead.Utility
             return entries;
         }
 
-        private static readonly HashSet<EntityType> _validTypesMph = new HashSet<EntityType>()
-        {
+        private static readonly FrozenSet<EntityType> _validTypesMph =
+        [
             EntityType.Platform,
             EntityType.Object,
             EntityType.PlayerSpawn,
@@ -1553,10 +1623,10 @@ namespace MphRead.Utility
             EntityType.Artifact,
             EntityType.CameraSequence,
             EntityType.ForceField
-        };
+        ];
 
-        private static readonly HashSet<EntityType> _validTypesFh = new HashSet<EntityType>()
-        {
+        private static readonly FrozenSet<EntityType> _validTypesFh =
+        [
             EntityType.FhUnknown0,
             EntityType.FhPlayerSpawn,
             EntityType.FhUnknown2,
@@ -1569,10 +1639,10 @@ namespace MphRead.Utility
             EntityType.FhJumpPad,
             EntityType.FhPointModule,
             EntityType.FhMorphCamera
-        };
+        ];
 
-        private static readonly HashSet<EnemyType> _validEnemiesFh = new HashSet<EnemyType>()
-        {
+        private static readonly FrozenSet<EnemyType> _validEnemiesFh =
+        [
             EnemyType.WarWasp,
             EnemyType.BarbedWarWasp,
             EnemyType.Zoomer,
@@ -1582,7 +1652,7 @@ namespace MphRead.Utility
             EnemyType.Petrasyl2,
             EnemyType.Petrasyl3,
             EnemyType.Petrasyl4
-        };
+        ];
 
         private static void ThrowIfInvalid(EntityEditorBase entity, bool firstHunt)
         {
@@ -2169,8 +2239,8 @@ namespace MphRead.Utility
                 throw new InvalidOperationException();
             }
             writer.Write(entity.LinkedEntityId);
-            writer.Write(entity.SpawnLimit);
             writer.Write(entity.SpawnTotal);
+            writer.Write(entity.SpawnLimit);
             writer.Write(entity.SpawnCount);
             writer.WriteByte(entity.Active);
             writer.WriteByte(entity.AlwaysActive);
@@ -2411,6 +2481,25 @@ namespace MphRead.Utility
 
         private static void WriteFhEntity(EntityEditorBase entity, BinaryWriter writer)
         {
+            if ((int)entity.Type < 100)
+            {
+                if (entity.Type == EntityType.PlayerSpawn)
+                {
+                    entity.Type = EntityType.FhPlayerSpawn;
+                }
+                else if (entity.Type == EntityType.PointModule)
+                {
+                    entity.Type = EntityType.FhPointModule;
+                }
+                else if (entity.Type == EntityType.MorphCamera)
+                {
+                    entity.Type = EntityType.FhMorphCamera;
+                }
+                else
+                {
+                    throw new ProgramException($"Invalid FH entity type {entity.Type}");
+                }
+            }
             writer.Write((ushort)((ushort)entity.Type - 100));
             writer.Write(entity.Id);
             writer.WriteVector3(entity.Position);

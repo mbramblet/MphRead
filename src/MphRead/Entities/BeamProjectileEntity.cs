@@ -304,14 +304,8 @@ namespace MphRead.Entities
                         anyRes = colRes;
                     }
                 }
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (DoorEntity door in _scene.GetDoorEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type != EntityType.Door)
-                    {
-                        continue;
-                    }
-                    var door = (DoorEntity)entity;
                     if (door.Flags.TestFlag(DoorFlags.Open) || door.ConnectorInactive)
                     {
                         continue;
@@ -341,15 +335,9 @@ namespace MphRead.Entities
                         }
                     }
                 }
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (ForceFieldEntity forceField in _scene.GetForceFieldEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type != EntityType.ForceField)
-                    {
-                        continue;
-                    }
                     // todo: some of these properties are compatible with the entity moving, some aren't
-                    var forceField = (ForceFieldEntity)entity;
                     if (forceField.Active
                         && CollisionDetection.CheckCylinderIntersectPlane(BackPosition, Position, forceField.Plane, ref colRes)
                         && colRes.Distance < minDist)
@@ -375,15 +363,9 @@ namespace MphRead.Entities
             Debug.Assert(Owner != null);
             if (Owner.Type != EntityType.EnemyInstance)
             {
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (EnemyInstanceEntity enemy in _scene.GetEnemyInstanceEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type != EntityType.EnemyInstance)
-                    {
-                        continue;
-                    }
                     CollisionResult res = default;
-                    var enemy = (EnemyInstanceEntity)entity;
                     if (enemy.Flags.TestFlag(EnemyFlags.CollideBeam)
                         && CollisionDetection.CheckCylinderOverlapVolume(enemy.HurtVolume, BackPosition, Position, CylinderRadius, ref res))
                     {
@@ -403,14 +385,8 @@ namespace MphRead.Entities
             }
             bool hitHalfturret = false;
             // todo: visualize player collision (and rename some "pickup" fields)
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.Player)
-                {
-                    continue;
-                }
-                var player = (PlayerEntity)entity;
                 if (player.Health == 0)
                 {
                     continue;
@@ -488,16 +464,10 @@ namespace MphRead.Entities
                     }
                 }
             }
-            if (!_scene.Multiplayer)
+            if (GameState.SinglePlayer)
             {
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (BeamProjectileEntity other in _scene.GetBeamProjectileEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type != EntityType.BeamProjectile)
-                    {
-                        continue;
-                    }
-                    var other = (BeamProjectileEntity)entity;
                     if (other.Owner == Owner || other.Flags.TestFlag(BeamFlags.Collided) || !other.Flags.TestFlag(BeamFlags.Destroyable)
                         || other.Owner?.Type == EntityType.EnemyInstance && Owner.Type == EntityType.EnemyInstance)
                     {
@@ -545,7 +515,7 @@ namespace MphRead.Entities
                         DamageFlags damageFlags = DamageFlags.NoDmgInvuln;
                         if (player.BeamEffectiveness[(int)Beam] == Effectiveness.Zero)
                         {
-                            if (!_scene.Multiplayer && Owner == PlayerEntity.Main)
+                            if (GameState.SinglePlayer && Owner == PlayerEntity.Main)
                             {
                                 Matrix4 transform = GetTransformMatrix(Vector3.UnitX, Vector3.UnitY, player.Position);
                                 EffectEntry? effect = _scene.SpawnEffectGetEntry(115, transform); // ineffectivePsycho
@@ -684,7 +654,7 @@ namespace MphRead.Entities
                                     {
                                         door.Unlock(updateState: true, noLockAnimSfx: true);
                                     }
-                                    else if (!_scene.Multiplayer)
+                                    else if (GameState.SinglePlayer)
                                     {
                                         // todo: handle messages like this
                                         _scene.SendMessage(Message.ShowWarning, this, null, 40, 90 * 2, 5 * 2); // todo: FPS stuff
@@ -919,6 +889,30 @@ namespace MphRead.Entities
                         colRes.Plane.Y + factor.Y - colRes.Plane.Y * 2 * dot,
                         colRes.Plane.Z + factor.Z - colRes.Plane.Z * 2 * dot
                     ).Normalized();
+                    if (Owner.Type == EntityType.Player)
+                    {
+                        var player = (PlayerEntity)Owner;
+                        if (player.IsBot && GameState.SinglePlayer && player.Hunter == Hunter.Spire)
+                        {
+                            int encounter = GameState.EncounterState[player.SlotIndex];
+                            ushort damage = 3;
+                            if (encounter == 2 || encounter == 0 && player.BotLevel > 0)
+                            {
+                                damage = 4;
+                            }
+                            _ricochetEquip.UnchargedDamage = damage;
+                            _ricochetEquip.MinChargeDamage = damage;
+                            _ricochetEquip.ChargedDamage = damage;
+                            _ricochetEquip.HeadshotDamage = damage;
+                            _ricochetEquip.MinChargeHeadshotDamage = damage;
+                            _ricochetEquip.ChargedHeadshotDamage = damage;
+                            _ricochetEquip.SplashDamage = damage;
+                            _ricochetEquip.MinChargeSplashDamage = damage;
+                            _ricochetEquip.ChargedSplashDamage = damage;
+                            _ricochetEquip.DmgDirTypes[0] = 0;
+                            _ricochetEquip.DmgDirTypes[1] = 0;
+                        }
+                    }
                     _ricochetEquip.Beams = Equip.Beams;
                     _ricochetEquip.Weapon = RicochetWeapon;
                     BeamSpawnFlags flags = BeamSpawnFlags.None;
@@ -944,14 +938,12 @@ namespace MphRead.Entities
 
         private void CheckSplashDamage(EntityBase? colWith)
         {
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.Player || entity == colWith)
+                if (player == colWith)
                 {
                     continue;
                 }
-                var player = (PlayerEntity)entity;
 
                 void OmegaCannonFlash()
                 {
@@ -992,15 +984,9 @@ namespace MphRead.Entities
                     OmegaCannonFlash();
                 }
             }
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (EnemyInstanceEntity enemy in _scene.GetEnemyInstanceEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.EnemyInstance || entity == colWith)
-                {
-                    continue;
-                }
-                var enemy = (EnemyInstanceEntity)entity;
-                if (!enemy.Flags.TestFlag(EnemyFlags.CollideBeam))
+                if (enemy == colWith || !enemy.Flags.TestFlag(EnemyFlags.CollideBeam))
                 {
                     continue;
                 }
@@ -1325,6 +1311,7 @@ namespace MphRead.Entities
         public override void Destroy()
         {
             _soundSource.StopAllSfx();
+            Lifespan = 0;
             if (Effect != null)
             {
                 _scene.DetachEffectEntry(Effect, setExpired: true);
@@ -1429,12 +1416,12 @@ namespace MphRead.Entities
                     cost = 0;
                 }
             }
-            int ammo = equip.GetAmmo?.Invoke() ?? -1;
+            int ammo = equip.Ammo;
             if (ammo >= 0 && cost > ammo)
             {
                 return BeamResultFlags.NoSpawn;
             }
-            equip.SetAmmo?.Invoke(ammo - cost);
+            equip.Ammo = ammo - cost;
             EffectEntry? muzzleEffect = null;
             if (!spawnFlags.TestFlag(BeamSpawnFlags.NoMuzzle))
             {
@@ -1508,18 +1495,26 @@ namespace MphRead.Entities
             {
                 flags |= BeamFlags.LifeDrain;
             }
-            byte drawFuncId = weapon.DrawFuncIds[charged ? 1 : 0];
+            byte drawFuncId = equip.DrawFuncIds[charged ? 1 : 0];
+            if (drawFuncId == 255)
+            {
+                drawFuncId = weapon.DrawFuncIds[charged ? 1 : 0];
+            }
             ushort colorValue = weapon.Colors[charged ? 1 : 0];
             float red = ((colorValue >> 0) & 0x1F) / 31f;
             float green = ((colorValue >> 5) & 0x1F) / 31f;
             float blue = ((colorValue >> 10) & 0x1F) / 31f;
             var color = new Vector3(red, green, blue);
             byte colEffect = weapon.CollisionEffects[charged ? 1 : 0];
-            byte dmgDirType = weapon.DmgDirTypes[charged ? 1 : 0];
+            byte dmgDirType = equip.DmgDirTypes[charged ? 1 : 0];
+            if (dmgDirType == 255)
+            {
+                dmgDirType = weapon.DmgDirTypes[charged ? 1 : 0];
+            }
             float dmgDirMag = GetAmount(weapon.UnchargedDmgDirMag, weapon.MinChargeDmgDirMag, weapon.ChargedDmgDirMag) / 4096f;
-            int damage = (int)GetAmount(weapon.UnchargedDamage, weapon.MinChargeDamage, weapon.ChargedDamage);
-            int hsDamage = (int)GetAmount(weapon.HeadshotDamage, weapon.MinChargeHeadshotDamage, weapon.ChargedHeadshotDamage);
-            int splashDmg = (int)GetAmount(weapon.SplashDamage, weapon.MinChargeSplashDamage, weapon.ChargedSplashDamage);
+            int damage = (int)GetAmount(equip.UnchargedDamage, equip.MinChargeDamage, equip.ChargedDamage);
+            int hsDamage = (int)GetAmount(equip.HeadshotDamage, equip.MinChargeHeadshotDamage, equip.ChargedHeadshotDamage);
+            int splashDmg = (int)GetAmount(equip.SplashDamage, equip.MinChargeSplashDamage, equip.ChargedSplashDamage);
             float splashRadius = GetAmount(weapon.UnchargedSplashRadius, weapon.MinChargeSplashRadius, weapon.ChargedSplashRadius) / 4096f;
             byte splashDmgType = weapon.SplashDamageTypes[charged ? 1 : 0];
             if (spawnFlags.TestFlag(BeamSpawnFlags.DoubleDamage))
@@ -1730,14 +1725,14 @@ namespace MphRead.Entities
                 Debug.Assert(beam.Target == null);
                 if (beam.Flags.TestFlag(BeamFlags.Homing))
                 {
-                    if (CheckHomingTargets(beam, weapon, scene))
+                    if (CheckHomingTargets(beam, equip, scene))
                     {
                         result |= BeamResultFlags.Homing;
                     }
                     if (beam.Beam == BeamType.ShockCoil && owner.Type == EntityType.Player)
                     {
                         var ownerPlayer = (PlayerEntity)owner;
-                        if ((scene.Multiplayer || !ownerPlayer.IsBot) && ownerPlayer.ShockCoilTarget == beam.Target
+                        if ((GameState.Multiplayer || !ownerPlayer.IsBot) && ownerPlayer.ShockCoilTarget == beam.Target
                             && scene.FrameCount % 2 == 0) // todo: FPS stuff
                         {
                             // todo: FPS stuff
@@ -1772,11 +1767,12 @@ namespace MphRead.Entities
             EntityType.Platform
         };
 
-        private static bool CheckHomingTargets(BeamProjectileEntity beam, WeaponInfo weapon, Scene scene)
+        private static bool CheckHomingTargets(BeamProjectileEntity beam, EquipInfo equip, Scene scene)
         {
             bool result = false;
+            WeaponInfo weapon = equip.Weapon;
             Debug.Assert(beam.Owner != null);
-            float tolerance = Fixed.ToFloat(weapon.HomingTolerance);
+            float tolerance = Fixed.ToFloat(equip.HomingTolerance);
             float curDiv = tolerance;
             for (int i = 0; i < _homingTargetTypes.Count; i++)
             {
@@ -1786,9 +1782,8 @@ namespace MphRead.Entities
                 {
                     continue;
                 }
-                for (int j = 0; j < scene.Entities.Count; j++)
+                foreach (EntityBase entity in scene.Entities)
                 {
-                    EntityBase entity = scene.Entities[j];
                     if (entity.Type != type || entity == beam.Owner || !entity.GetTargetable())
                     {
                         continue;
@@ -1846,7 +1841,7 @@ namespace MphRead.Entities
                         Vector3 between = position - beam.Position;
                         float distSqr = Vector3.Dot(between, between);
                         float range = Fixed.ToFloat(weapon.HomingRange);
-                        if ((weapon.Flags.TestFlag(WeaponFlags.Continuous) && beam.BeamKind == BeamType.Platform
+                        if ((weapon.Flags.TestFlag(WeaponFlags.Continuous) && beam.BeamKind != BeamType.Platform
                             || distSqr <= range * range) && distSqr > 0)
                         {
                             float dist = MathF.Sqrt(distSqr);
@@ -1927,15 +1922,9 @@ namespace MphRead.Entities
         private void CheckIceWaveCollision(float angle)
         {
             float angleCos = MathF.Cos(MathHelper.DegreesToRadians(angle));
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.Player || Owner == entity)
-                {
-                    continue;
-                }
-                var player = (PlayerEntity)entity;
-                if (player.Health == 0)
+                if (player == Owner || player.Health == 0)
                 {
                     continue;
                 }
@@ -2048,7 +2037,7 @@ namespace MphRead.Entities
                 Matrix4 transform = GetTransformMatrix(facing, up);
                 transform.Row3.Xyz = spawnPos;
                 // the game uses BeamKind against "511" bits which accomplish the same thing as this terrain type check
-                if (_scene.GameMode != GameMode.SinglePlayer || colRes.Terrain <= Terrain.Lava)
+                if (!GameState.SinglePlayer || colRes.Terrain <= Terrain.Lava)
                 {
                     var ent = BeamEffectEntity.Create(
                         new BeamEffectEntityData(CollisionEffect, noSplat, transform, colRes.EntityCollision), _scene);
@@ -2063,7 +2052,7 @@ namespace MphRead.Entities
                 }
                 // there are actually effect IDs to cover platform/enemy beams in these arrays (although most are 255)
                 byte splatEffect = _terSplat1P[(int)BeamKind][(int)colRes.Terrain];
-                if (_scene.GameMode == GameMode.SinglePlayer && splatEffect != 255)
+                if (GameState.SinglePlayer && splatEffect != 255)
                 {
                     splatEffect += 3;
                     var ent = BeamEffectEntity.Create(
@@ -2098,7 +2087,7 @@ namespace MphRead.Entities
                 // 28 - sniperCol (unintended)
                 effectId = (int)Beam + 20;
             }
-            else if (!_scene.Multiplayer)
+            else if (GameState.SinglePlayer)
             {
                 // 12 - effectiveHitPB
                 // 13 - effectiveHitElectric

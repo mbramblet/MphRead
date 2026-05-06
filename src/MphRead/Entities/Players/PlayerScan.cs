@@ -30,7 +30,7 @@ namespace MphRead.Entities
 
         public void SetCombatVisor()
         {
-            if (!_scene.Multiplayer && ScanVisor)
+            if (GameState.SinglePlayer && ScanVisor)
             {
                 SwitchVisors(reset: false);
             }
@@ -38,7 +38,7 @@ namespace MphRead.Entities
 
         public void ResetCombatVisor()
         {
-            if (!_scene.Multiplayer && ScanVisor)
+            if (GameState.SinglePlayer && ScanVisor)
             {
                 SwitchVisors(reset: true);
             }
@@ -96,9 +96,8 @@ namespace MphRead.Entities
             float minCenter = Single.MaxValue;
             _scanTargetCount = 0;
             bool update = false;
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (EntityBase entity in _scene.Entities)
             {
-                EntityBase entity = _scene.Entities[i];
                 int scanId = entity.GetScanId();
                 if (scanId == 0 || !entity.ScanVisible())
                 {

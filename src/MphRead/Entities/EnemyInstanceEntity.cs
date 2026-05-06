@@ -178,16 +178,10 @@ namespace MphRead.Entities
                     return between.LengthSquared < distSqr && between.Y > -15 && between.Y < 15;
                 }
 
-                if (_scene.Multiplayer)
+                if (GameState.Multiplayer)
                 {
-                    for (int i = 0; i < _scene.Entities.Count; i++)
+                    foreach (PlayerEntity player in _scene.GetPlayerEntities())
                     {
-                        EntityBase entity = _scene.Entities[i];
-                        if (entity.Type != EntityType.Player)
-                        {
-                            continue;
-                        }
-                        var player = (PlayerEntity)entity;
                         if (player.Health > 0 && CheckInRange(player.Position))
                         {
                             inRange = true;
@@ -218,14 +212,8 @@ namespace MphRead.Entities
                     _soundSource.Update(Position, rangeIndex);
                     UpdateNodeRefVolume();
                     ClearHitPlayers();
-                    for (int i = 0; i < _scene.Entities.Count; i++)
+                    foreach (PlayerEntity player in _scene.GetPlayerEntities())
                     {
-                        EntityBase entity = _scene.Entities[i];
-                        if (entity.Type != EntityType.Player)
-                        {
-                            continue;
-                        }
-                        var player = (PlayerEntity)entity;
                         CollisionResult hitRes = default;
                         if (player.Health > 0)
                         {
@@ -666,7 +654,7 @@ namespace MphRead.Entities
             return true;
         }
 
-        // similar to the above, where current is always the facing vector and axis is always Y up
+        // similar to the above, where current is always the facing vector and current up vector is maintained
         public bool SeekTargetFacing(Vector3 target, Vector3 up, ref ushort steps, float angle)
         {
             bool result = false;

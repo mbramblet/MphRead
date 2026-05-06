@@ -6,8 +6,8 @@ namespace MphRead.Memory
 {
     public abstract class MemoryClass
     {
-        private readonly Memory _memory;
-        private readonly int _offset;
+        protected readonly Memory _memory;
+        protected readonly int _offset;
 
         public IntPtr Address { get; }
 
@@ -1583,19 +1583,19 @@ namespace MphRead.Memory
         public IntPtr NodeRef { get => ReadPointer(_off5); set => WritePointer(_off5, value); }
 
         private const int _off6 = 0x24;
-        public ushort SomeEntId { get => ReadUInt16(_off6); set => WriteUInt16(_off6, value); }
+        public ushort LinkedEntity { get => ReadUInt16(_off6); set => WriteUInt16(_off6, value); }
 
         private const int _off7 = 0x26;
-        public ushort Field26 { get => ReadUInt16(_off7); set => WriteUInt16(_off7, value); }
+        public ushort Padding26 { get => ReadUInt16(_off7); set => WriteUInt16(_off7, value); }
 
         private const int _off8 = 0x28;
-        public Vector3 Field28 { get => ReadVec3(_off8); set => WriteVec3(_off8, value); }
+        public Vector3 LinkInvPos { get => ReadVec3(_off8); set => WriteVec3(_off8, value); }
 
         private const int _off9 = 0x34;
-        public Vector3 Field34 { get => ReadVec3(_off9); set => WriteVec3(_off9, value); }
+        public Vector3 LinkInvVec2 { get => ReadVec3(_off9); set => WriteVec3(_off9, value); }
 
         private const int _off10 = 0x40;
-        public Vector3 Field40 { get => ReadVec3(_off10); set => WriteVec3(_off10, value); }
+        public Vector3 LinkInvVec1 { get => ReadVec3(_off10); set => WriteVec3(_off10, value); }
 
         private const int _off11 = 0x4C;
         public Vector3 Pos { get => ReadVec3(_off11); set => WriteVec3(_off11, value); }
@@ -1607,22 +1607,22 @@ namespace MphRead.Memory
         public Vector3 Vec1 { get => ReadVec3(_off13); set => WriteVec3(_off13, value); }
 
         private const int _off14 = 0x70;
-        public byte Flags { get => ReadByte(_off14); set => WriteByte(_off14, value); }
+        public SpawnerFlags Flags { get => (SpawnerFlags)ReadByte(_off14); set => WriteByte(_off14, (byte)value); }
 
         private const int _off15 = 0x71;
-        public byte SomeCount { get => ReadByte(_off15); set => WriteByte(_off15, value); }
+        public byte SpawnedCount { get => ReadByte(_off15); set => WriteByte(_off15, value); }
 
         private const int _off16 = 0x72;
-        public byte Field72 { get => ReadByte(_off16); set => WriteByte(_off16, value); }
+        public byte ActiveCount { get => ReadByte(_off16); set => WriteByte(_off16, value); }
 
         private const int _off17 = 0x73;
-        public byte Field73 { get => ReadByte(_off17); set => WriteByte(_off17, value); }
+        public byte Padding73 { get => ReadByte(_off17); set => WriteByte(_off17, value); }
 
         private const int _off18 = 0x74;
         public ushort CooldownTimer { get => ReadUInt16(_off18); set => WriteUInt16(_off18, value); }
 
         private const int _off19 = 0x76;
-        public ushort Field76 { get => ReadUInt16(_off19); set => WriteUInt16(_off19, value); }
+        public ushort Padding76 { get => ReadUInt16(_off19); set => WriteUInt16(_off19, value); }
 
         private const int _off20 = 0x78;
         public int ActiveDistSqr { get => ReadInt32(_off20); set => WriteInt32(_off20, value); }
@@ -4581,6 +4581,14 @@ namespace MphRead.Memory
         private const int _off639 = 0xF2C;
         public int WeaponSfxHandle { get => ReadInt32(_off639); set => WriteInt32(_off639, value); }
 
+        public StructArray<AIContext>? AIContext { get; }
+        public uint AggroCount
+        {
+            get => ReadUInt32(AiData.ToInt32() - Memory.Offset - _offset + 0x1060);
+            set => WriteUInt32(AiData.ToInt32() - Memory.Offset - _offset + 0x1060, value);
+        }
+        public StructArray<AIAggro>? AIAggro { get; }
+
         public CPlayer(Memory memory, int address) : base(memory, address)
         {
             Field100 = new UInt16Array(memory, address + _off38, 2);
@@ -4600,6 +4608,13 @@ namespace MphRead.Memory
             EquipInfo = new EquipInfoPtr(memory, address + _off289);
             BeamHead = new CBeamProjectile(memory, address + _off290);
             SfxParameters = new SfxParameters(memory, address + _off638);
+            if (AiData != 0)
+            {
+                var offset = AiData + new IntPtr(0x2FC);
+                AIContext = new StructArray<AIContext>(memory, offset, 20, 0xA8, (Memory m, int a) => new AIContext(m, a));
+                offset = AiData + new IntPtr(0x1064);
+                AIAggro = new StructArray<AIAggro>(memory, offset, 25, 0x10, (Memory m, int a) => new AIAggro(m, a));
+            }
         }
 
         public CPlayer(Memory memory, IntPtr address) : base(memory, address)
@@ -4621,6 +4636,335 @@ namespace MphRead.Memory
             EquipInfo = new EquipInfoPtr(memory, address + _off289);
             BeamHead = new CBeamProjectile(memory, address + _off290);
             SfxParameters = new SfxParameters(memory, address + _off638);
+            if (AiData != 0)
+            {
+                var offset = AiData + new IntPtr(0x2FC);
+                AIContext = new StructArray<AIContext>(memory, offset, 20, 0xA8, (Memory m, int a) => new AIContext(m, a));
+                offset = AiData + new IntPtr(0x1064);
+                AIAggro = new StructArray<AIAggro>(memory, offset, 25, 0x10, (Memory m, int a) => new AIAggro(m, a));
+            }
+        }
+    }
+
+    public class AIContext : MemoryClass
+    {
+        private const int _off0 = 0x0;
+        public int Func24Id { get => ReadInt32(_off0); set => WriteInt32(_off0, value); }
+
+        private const int _off1 = 0x4;
+        public byte Field4 { get => ReadByte(_off1); set => WriteByte(_off1, value); }
+
+        private const int _off2 = 0x5;
+        public byte Field5 { get => ReadByte(_off2); set => WriteByte(_off2, value); }
+
+        private const int _off3 = 0x6;
+        public byte Field6 { get => ReadByte(_off3); set => WriteByte(_off3, value); }
+
+        private const int _off4 = 0x7;
+        public byte Field7 { get => ReadByte(_off4); set => WriteByte(_off4, value); }
+
+        private const int _off5 = 0x8;
+        public byte Field8 { get => ReadByte(_off5); set => WriteByte(_off5, value); }
+
+        private const int _off6 = 0x9;
+        public byte Field9 { get => ReadByte(_off6); set => WriteByte(_off6, value); }
+
+        private const int _off7 = 0xA;
+        public byte FieldA { get => ReadByte(_off7); set => WriteByte(_off7, value); }
+
+        private const int _off8 = 0xB;
+        public byte FieldB { get => ReadByte(_off8); set => WriteByte(_off8, value); }
+
+        private const int _off9 = 0xC;
+        public byte FieldC { get => ReadByte(_off9); set => WriteByte(_off9, value); }
+
+        private const int _off10 = 0xD;
+        public byte FieldD { get => ReadByte(_off10); set => WriteByte(_off10, value); }
+
+        private const int _off11 = 0xE;
+        public byte FieldE { get => ReadByte(_off11); set => WriteByte(_off11, value); }
+
+        private const int _off12 = 0xF;
+        public byte FieldF { get => ReadByte(_off12); set => WriteByte(_off12, value); }
+
+        private const int _off13 = 0x10;
+        public byte Field10 { get => ReadByte(_off13); set => WriteByte(_off13, value); }
+
+        private const int _off14 = 0x11;
+        public byte Padding11 { get => ReadByte(_off14); set => WriteByte(_off14, value); }
+
+        private const int _off15 = 0x12;
+        public ushort Padding12 { get => ReadUInt16(_off15); set => WriteUInt16(_off15, value); }
+
+        private const int _off16 = 0x14;
+        public int Field14 { get => ReadInt32(_off16); set => WriteInt32(_off16, value); }
+
+        private const int _off17 = 0x18;
+        public int Field18 { get => ReadInt32(_off17); set => WriteInt32(_off17, value); }
+
+        private const int _off18 = 0x1C;
+        public int Field1C { get => ReadInt32(_off18); set => WriteInt32(_off18, value); }
+
+        private const int _off19 = 0x20;
+        public int Field20 { get => ReadInt32(_off19); set => WriteInt32(_off19, value); }
+
+        private const int _off20 = 0x24;
+        public int Field24 { get => ReadInt32(_off20); set => WriteInt32(_off20, value); }
+
+        private const int _off21 = 0x28;
+        public int Field28 { get => ReadInt32(_off21); set => WriteInt32(_off21, value); }
+
+        private const int _off22 = 0x2C;
+        public int Field2C { get => ReadInt32(_off22); set => WriteInt32(_off22, value); }
+
+        private const int _off23 = 0x30;
+        public int Field30 { get => ReadInt32(_off23); set => WriteInt32(_off23, value); }
+
+        private const int _off24 = 0x34;
+        public Vector3 Field34 { get => ReadVec3(_off24); set => WriteVec3(_off24, value); }
+
+        private const int _off25 = 0x40;
+        public int Field40 { get => ReadInt32(_off25); set => WriteInt32(_off25, value); }
+
+        private const int _off26 = 0x44;
+        public int Field44 { get => ReadInt32(_off26); set => WriteInt32(_off26, value); }
+
+        private const int _off27 = 0x48; // AIData1*
+        public IntPtr CurData1Iter { get => ReadPointer(_off27); set => WritePointer(_off27, value); }
+
+        private const int _off28 = 0x4C;
+        public int CallCount { get => ReadInt32(_off28); set => WriteInt32(_off28, value); }
+
+        private const int _off29 = 0x50;
+        public byte Depth { get => ReadByte(_off29); set => WriteByte(_off29, value); }
+
+        private const int _off30 = 0x51;
+        public byte Padding51 { get => ReadByte(_off30); set => WriteByte(_off30, value); }
+
+        private const int _off31 = 0x52;
+        public ushort Padding52 { get => ReadUInt16(_off31); set => WriteUInt16(_off31, value); }
+
+        private const int _off32 = 0x54; // int[21]
+        public Int32Array Weights { get; }
+
+        private IntPtr _lastData1Ptr = IntPtr.Zero;
+        private AIData1? _data1 = null;
+        public AIData1? AIData1
+        {
+            get
+            {
+                if (CurData1Iter != _lastData1Ptr)
+                {
+                    if (CurData1Iter == 0)
+                    {
+                        _data1 = null;
+                    }
+                    else
+                    {
+                        _data1 = new AIData1(_memory, CurData1Iter);
+                    }
+                    _lastData1Ptr = CurData1Iter;
+                }
+                return _data1;
+            }
+        }
+
+        public AIContext(Memory memory, int address) : base(memory, address)
+        {
+            Weights = new Int32Array(memory, address + _off32, 21);
+        }
+
+        public AIContext(Memory memory, IntPtr address) : base(memory, address)
+        {
+            Weights = new Int32Array(memory, address + _off32, 21);
+        }
+    }
+
+    public class AIData1 : MemoryClass
+    {
+        private const int _off0 = 0x0;
+        public int Func24Id { get => ReadInt32(_off0); set => WriteInt32(_off0, value); }
+
+        private const int _off1 = 0x4;
+        public int Data1Count { get => ReadInt32(_off1); set => WriteInt32(_off1, value); }
+
+        private const int _off2 = 0x8; // AIData1*
+        public IntPtr Data1Ptr { get => ReadPointer(_off2); set => WritePointer(_off2, value); }
+        public StructArray<AIData1>? Data1 { get; }
+
+        private const int _off3 = 0xC;
+        public int Data2Count { get => ReadInt32(_off3); set => WriteInt32(_off3, value); }
+
+        private const int _off4 = 0x10; // AIData2*
+        public IntPtr Data2Ptr { get => ReadPointer(_off4); set => WritePointer(_off4, value); }
+        public StructArray<AIData2>? Data2 { get; }
+
+        private const int _off5 = 0x14;
+        public int Data3Count { get => ReadInt32(_off5); set => WriteInt32(_off5, value); }
+
+        private const int _off6 = 0x18; // int*
+        public IntPtr Data3a { get => ReadPointer(_off6); set => WritePointer(_off6, value); }
+
+        private const int _off7 = 0x1C;
+        public int Data3bCount { get => ReadInt32(_off7); set => WriteInt32(_off7, value); }
+
+        private const int _off8 = 0x20; // int*
+        public IntPtr Data3b { get => ReadPointer(_off8); set => WritePointer(_off8, value); }
+
+        public AIData1(Memory memory, int address) : base(memory, address)
+        {
+            if (Data1Ptr != 0 && Data1Count > 0)
+            {
+                Data1 = new StructArray<AIData1>(memory, Data1Ptr, Data1Count, 0x24, (Memory m, int a) => new AIData1(m, a));
+            }
+            if (Data2Ptr != 0 && Data2Count > 0)
+            {
+                Data2 = new StructArray<AIData2>(memory, Data2Ptr, Data2Count, 0x18, (Memory m, int a) => new AIData2(m, a));
+            }
+        }
+
+        public AIData1(Memory memory, IntPtr address) : base(memory, address)
+        {
+            if (Data1Ptr != 0 && Data1Count > 0)
+            {
+                Data1 = new StructArray<AIData1>(memory, Data1Ptr, Data1Count, 0x24, (Memory m, int a) => new AIData1(m, a));
+            }
+            if (Data2Ptr != 0 && Data2Count > 0)
+            {
+                Data2 = new StructArray<AIData2>(memory, Data2Ptr, Data2Count, 0x18, (Memory m, int a) => new AIData2(m, a));
+            }
+        }
+    }
+
+    public class AIData2 : MemoryClass
+    {
+        private const int _off0 = 0x0;
+        public int FuncIdx { get => ReadInt32(_off0); set => WriteInt32(_off0, value); }
+
+        private const int _off1 = 0x4;
+        public int Data4Count { get => ReadInt32(_off1); set => WriteInt32(_off1, value); }
+
+        private const int _off2 = 0x8; // AIData4*
+        public IntPtr Data4 { get => ReadPointer(_off2); set => WritePointer(_off2, value); }
+
+        private const int _off3 = 0xC;
+        public int Data1SelectIdx { get => ReadInt32(_off3); set => WriteInt32(_off3, value); }
+
+        private const int _off4 = 0x10;
+        public int Weight { get => ReadInt32(_off4); set => WriteInt32(_off4, value); }
+
+        private const int _off5 = 0x14; // AIData5*
+        public IntPtr Data5 { get => ReadPointer(_off5); set => WritePointer(_off5, value); }
+
+        public AIData2(Memory memory, int address) : base(memory, address)
+        {
+        }
+
+        public AIData2(Memory memory, IntPtr address) : base(memory, address)
+        {
+        }
+    }
+
+    public class AIAggro : MemoryClass
+    {
+        private const int _off0 = 0x0;
+        public ushort Flags { get => ReadUInt16(_off0); set => WriteUInt16(_off0, value); }
+
+        private const int _off1 = 0x2;
+        public ushort Field2 { get => ReadUInt16(_off1); set => WriteUInt16(_off1, value); }
+
+        private const int _off2 = 0x4;
+        public ushort Field4 { get => ReadUInt16(_off2); set => WriteUInt16(_off2, value); }
+
+        private const int _off3 = 0x6;
+        public ushort Field6 { get => ReadUInt16(_off3); set => WriteUInt16(_off3, value); }
+
+        private const int _off4 = 0x8; // CPlayer*
+        public IntPtr Player1 { get => ReadPointer(_off4); set => WritePointer(_off4, value); }
+
+        private const int _off5 = 0xC; // CPlayer*
+        public IntPtr Player2 { get => ReadPointer(_off5); set => WritePointer(_off5, value); }
+
+        public int Slot1 { get; set; }
+        public int Slot2 { get; set; }
+
+        public void UpdateSlots(CPlayer[] players)
+        {
+            Slot1 = -1;
+            Slot2 = -1;
+            for (int i = 0; i < 4; i++)
+            {
+                if (Player1 == players[i].Address)
+                {
+                    Slot1 = i;
+                }
+                if (Player2 == players[i].Address)
+                {
+                    Slot2 = i;
+                }
+            }
+        }
+
+        public byte Field0A
+        {
+            get
+            {
+                ushort value = Flags;
+                return (byte)(value & 0xF);
+            }
+        }
+
+        public byte Field0B
+        {
+            get
+            {
+                ushort value = Flags;
+                return (byte)((value & 0xF0) >> 4);
+            }
+        }
+
+        public byte Field0C
+        {
+            get
+            {
+                ushort value = Flags;
+                return (byte)((value & 0xF00) >> 8);
+            }
+        }
+
+        public byte Field0D
+        {
+            get
+            {
+                ushort value = Flags;
+                return (byte)((value & 0xF000) >> 12);
+            }
+        }
+
+        public byte Field2A
+        {
+            get
+            {
+                ushort value = Field2;
+                return (byte)(value & 0xF);
+            }
+        }
+
+        public ushort Field2B
+        {
+            get
+            {
+                ushort value = Field2;
+                return (ushort)((value & 0xFFF0) >> 4);
+            }
+        }
+
+        public AIAggro(Memory memory, int address) : base(memory, address)
+        {
+        }
+
+        public AIAggro(Memory memory, IntPtr address) : base(memory, address)
+        {
         }
     }
 

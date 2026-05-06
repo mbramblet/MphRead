@@ -33,7 +33,7 @@ namespace MphRead.Entities
             SetTransform(data.Header.FacingVector, data.Header.UpVector, data.Header.Position);
             _volume = CollisionVolume.Move(data.Volume, Position);
             AddPlaceholderModel();
-            Debug.Assert(scene.GameMode == GameMode.SinglePlayer);
+            Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
             int state = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0);
             if (data.AlwaysActive != 0)
             {
@@ -126,17 +126,11 @@ namespace MphRead.Entities
             {
                 bool colliding = false;
                 TriggerFlags flags = _data.TriggerFlags;
-                for (int i = 0; i < _scene.Entities.Count; i++)
+                foreach (PlayerEntity player in _scene.GetPlayerEntities())
                 {
-                    EntityBase entity = _scene.Entities[i];
-                    if (entity.Type != EntityType.Player)
+                    for (int i = 0; i < player.EquipInfo.Beams.Length; i++)
                     {
-                        continue;
-                    }
-                    var player = (PlayerEntity)entity;
-                    for (int j = 0; j < player.EquipInfo.Beams.Length; j++)
-                    {
-                        BeamProjectileEntity beam = player.EquipInfo.Beams[j];
+                        BeamProjectileEntity beam = player.EquipInfo.Beams[i];
                         if (beam.Lifespan > 0)
                         {
                             CollisionResult discard = default;
@@ -286,7 +280,7 @@ namespace MphRead.Entities
         protected override Vector4? OverrideColor { get; } = new ColorRgb(0xFF, 0x8C, 0x00).AsVector4();
         public FhTriggerVolumeEntityData Data => _data;
 
-        public FhTriggerVolumeEntity(FhTriggerVolumeEntityData data, Scene scene) : base(EntityType.TriggerVolume, scene)
+        public FhTriggerVolumeEntity(FhTriggerVolumeEntityData data, Scene scene) : base(EntityType.FhTriggerVolume, scene)
         {
             _data = data;
             Id = data.Header.EntityId;

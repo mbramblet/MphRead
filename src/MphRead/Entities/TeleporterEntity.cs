@@ -34,7 +34,7 @@ namespace MphRead.Entities
             _data = data;
             Id = data.Header.EntityId;
             SetTransform(data.Header.FacingVector, data.Header.UpVector, data.Header.Position);
-            bool multiplayer = scene.Multiplayer || forceMultiplayer;
+            bool multiplayer = GameState.Multiplayer || forceMultiplayer;
             if (data.Invisible != 0)
             {
                 AddPlaceholderModel();
@@ -68,7 +68,7 @@ namespace MphRead.Entities
                     }
                 }
             }
-            if (_scene.GameMode == GameMode.SinglePlayer)
+            if (GameState.Mode == GameMode.SinglePlayer)
             {
                 int state = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0);
                 Active = state != 0;
@@ -107,7 +107,7 @@ namespace MphRead.Entities
             {
                 if (_big)
                 {
-                    Debug.Assert(scene.GameMode == GameMode.SinglePlayer);
+                    Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
                     bool active = GameState.StorySave.CountFoundArtifacts(data.ArtifactId) > 2;
                     if (active && (GameState.EscapeTimer == -1 || GameState.EscapeState != EscapeState.Escape))
                     {
@@ -179,15 +179,9 @@ namespace MphRead.Entities
             _soundSource.PlaySfx(SfxId.TELEPORTER_LOOP, loop: true);
             bool activated = false;
             Vector3 testPos = Position.AddY(1);
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.Player)
-                {
-                    continue;
-                }
-                var player = (PlayerEntity)entity;
-                if (player.Health == 0 || player.IsBot && !_scene.Multiplayer)
+                if (player.Health == 0 || player.IsBot && !GameState.Multiplayer)
                 {
                     continue;
                 }
@@ -223,7 +217,10 @@ namespace MphRead.Entities
                                     _scene.SetFade(FadeType.FadeOutBlack, length: 10 / 30f, overwrite: true, AfterFade.LoadRoom);
                                 }
                                 player.Speed = new Vector3(0, player.Speed.Y, 0);
-                                // todo: update bot AI flag
+                                if (player.IsBot)
+                                {
+                                    player.AiData.Field118 = 148 * 2; // todo-ai: FPS stuff
+                                }
                                 _triggeredSlots[player.SlotIndex] = true;
                             }
                         }
@@ -274,7 +271,7 @@ namespace MphRead.Entities
                     Active = false;
                     _scanId = 25;
                     _bool4 = true;
-                    if (_scene.GameMode == GameMode.SinglePlayer)
+                    if (GameState.Mode == GameMode.SinglePlayer)
                     {
                         GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                     }

@@ -24,14 +24,8 @@ namespace MphRead.Entities
         public override bool Process()
         {
             CollisionResult discard = default;
-            for (int i = 0; i < _scene.Entities.Count; i++)
+            foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
-                EntityBase entity = _scene.Entities[i];
-                if (entity.Type != EntityType.Player)
-                {
-                    continue;
-                }
-                var player = (PlayerEntity)entity;
                 if (player.IsAltForm)
                 {
                     if (player.MorphCamera == null)
@@ -77,7 +71,7 @@ namespace MphRead.Entities
         private readonly CollisionVolume _volume;
         private static readonly Vector3 _volumeColor = new Vector3(1, 1, 0);
 
-        public FhMorphCameraEntity(FhMorphCameraEntityData data, Scene scene) : base(EntityType.MorphCamera, scene)
+        public FhMorphCameraEntity(FhMorphCameraEntityData data, Scene scene) : base(EntityType.FhMorphCamera, scene)
         {
             _data = data;
             Id = data.Header.EntityId;

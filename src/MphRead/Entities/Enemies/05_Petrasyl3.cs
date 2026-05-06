@@ -119,15 +119,9 @@ namespace MphRead.Entities.Enemies
                     {
                         if (toTarget.X * toTarget.X + toTarget.Z * toTarget.Z <= _weaveOffset * _weaveOffset)
                         {
-                            for (int i = 0; i < _scene.Entities.Count; i++)
+                            foreach (EnemyInstanceEntity enemy in _scene.GetEnemyInstanceEntities())
                             {
-                                EntityBase entity = _scene.Entities[i];
-                                if (entity.Type != EntityType.EnemyInstance || entity == this)
-                                {
-                                    continue;
-                                }
-                                var enemy = (EnemyInstanceEntity)entity;
-                                if (enemy.EnemyType != EnemyType.Petrasyl3)
+                                if (enemy == this || enemy.EnemyType != EnemyType.Petrasyl3)
                                 {
                                     continue;
                                 }

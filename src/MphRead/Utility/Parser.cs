@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -101,9 +102,10 @@ namespace MphRead.Utility
             }
         }
 
-        private static readonly IReadOnlyDictionary<string, IReadOnlyList<Thing>> _things = new Dictionary<string, IReadOnlyList<Thing>>()
-        {
-            {
+        private static readonly FrozenDictionary<string, IReadOnlyList<Thing>> _things
+            = Frozen.Create<string, IReadOnlyList<Thing>>(
+        [
+            new(
                 "POLYGON_ATTR",
                 new List<Thing>()
                 {
@@ -122,8 +124,8 @@ namespace MphRead.Utility
                     new Thing(16, 20, "Alpha", ThingType.General),
                     new Thing(24, 29, "Polygon ID", ThingType.General)
                 }
-            }
-        };
+            )
+        ]);
 
         public static void MainLoop()
         {
